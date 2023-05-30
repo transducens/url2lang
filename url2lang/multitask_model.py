@@ -66,16 +66,12 @@ class MultitaskModel(nn.Module):
         heads_config = {}
 
         for task in tasks:
-            if task == "urls_classification":
+            if task == "language-identification":
                 heads[task] = ClassificationHead
             elif task == "mlm":
                 logger.warning("MLM head implementation is for Roberta and BERT like models (i.e. it is slightly different from models like Albert)")
 
                 heads[task] = MLMHead
-            elif task == "language-identification":
-                heads[task] = ClassificationHead
-            elif task == "langid-and-urls_classification":
-                heads[task] = ClassificationHead
             else:
                 raise Exception(f"Unknown task: {task}")
 

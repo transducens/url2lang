@@ -140,13 +140,6 @@ class SmartBatchingURLsDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        #return {"url_str": self.data[idx], "label": self.labels[idx]}
-        #return {
-        #    "url_tokens": self.tokens[idx],
-        #    #"url_attention_mask": self.attention_mask[idx],
-        #    "label": self.labels[idx],
-        #}
-
         result = {
             "url_tokens": self.tokens[idx],
             "labels_task_language_identification": self.labels["language-identification"][idx],

@@ -172,7 +172,6 @@ def load_model(tasks, tasks_kwargs, model_input="", pretrained_model="", device=
 
     return multitask_model
 
-# TODO fix regression
 def load_tasks_kwargs(all_tasks, auxiliary_tasks, regression):
     all_tasks_kwargs = {}
     total_auxiliary_tasks = 0
