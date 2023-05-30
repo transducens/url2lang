@@ -97,6 +97,39 @@ _optimizer_args = {
         "type": utils.argparse_nargs_type(float, float),
     }
 }
+# Languages from: https://commoncrawl.github.io/cc-crawl-statistics/plots/languages
+_langs_to_detect_alpha_3 = [
+    "eng", "deu", "rus", "fra", "zho", "spa",
+    "jpn", "ita", "nld", "pol", "por", "ces",
+    "vie", "tur", "ind", "swe", "ara", "fas",
+    "kor", "hun", "ell", "ron", "dan", "fin",
+    "tha", "slk", "nor", "ukr", "bul", "cat",
+    "srp", "hrv", "slv", "lit", "hin", "est",
+    "heb", "lat", "ben", "lav", "msa", "bos",
+    "sqi", "tam", "glg", "isl", "aze", "kat",
+    "mkd", "eus", "hye", "nep", "urd", "mon",
+    "mal", "kaz", "mar", "tel", "nno", "bel",
+    "uzb", "guj", "kan", "mya", "khm", "cym",
+    "epo", "tgl", "sin", "afr", "tat", "swa",
+    "gle", "pan", "kur", "kir", "tgk", "mlt",
+    "fao", "ori", "lao", "som", "ltz", "oci",
+    "amh", "fry", "bak", "pus", "san", "bre",
+    "mlg", "hau", "tuk", "war", "asm", "cos",
+    "div", "jav", "ceb", "kin", "hat", "zul",
+    "gla", "bod", "xho", "yid", "snd", "mri",
+    "uig", "roh", "sun", "kal", "yor", "tir",
+    "abk", "bih", "haw", "hmn", "ina", "que",
+    "grn", "ibo", "nya", "sco", "sna", "sot",
+    "smo", "vol", "glv", "orm", "ile", "syr",
+    "aar", "dzo", "iku", "kha", "lin", "lug",
+    "mfe", "aka", "aym", "bis", "chr", "crs",
+    "fij", "ipk", "nso", "run", "sag", "ssw",
+    "ton", "tsn", "wol", "zha", "got", "kas",
+    "lif", "nau", "sux", "tso", "ven"]
+_unknown_lang_label = "unk"
+_langs_to_detect_alpha_3 += _unknown_lang_label
+_lang2id = {_lang: idx for idx, _lang in enumerate(_langs_to_detect_alpha_3)} # id range: [0, len(_langs_to_detect_alpha_3) - 1]
+_id2lang = {idx: _lang for _lang, idx in _lang2id.items()}
 
 def get_lr_scheduler(scheduler, optimizer, *args, **kwargs):
     scheduler_instance = None
@@ -175,7 +208,7 @@ def load_model(tasks, tasks_kwargs, model_input="", pretrained_model="", device=
 def load_tasks_kwargs(all_tasks, auxiliary_tasks, regression):
     all_tasks_kwargs = {}
     total_auxiliary_tasks = 0
-    num_labels = 1 if regression else 2
+    num_labels = 1 if regression else len(_id2lang.keys())
 
     if "language-identification" in all_tasks:
         all_tasks_kwargs["language-identification"] = {
@@ -245,29 +278,45 @@ def load_dataset(filename_dataset, set_desc, shard_id, **kwargs):
         if len(input_data) != len(output_data):
             raise Exception(f"Different lengths for input and output data in {set_desc} set: {len(input_data)} vs {len(output_data)}")
 
-    non_parallel_urls = len([l for l in output_data if l == 0])
-    parallel_urls = len([l for l in output_data if l == 1])
+    urls_lang_count = [len([l for l in output_data if l == c]) for c in sorted(_id2lang.keys())]
 
-    if non_parallel_urls + parallel_urls != len(input_data):
-        raise Exception(f"Number of non-parallel + parallel URLs doesn't match the input data ({set_desc}): "
-                        f"{non_parallel_urls} + {parallel_urls} != {len(input_data)}")
+    if sum(urls_lang_count) != len(input_data):
+        raise Exception(f"Number of URLs per lang doesn't match the input data ({set_desc}): "
+                        f"{sum(urls_lang_count)} != {len(input_data)}")
 
-    logger.info("%d pairs of parallel URLs loaded (%s)", parallel_urls, set_desc)
-    logger.info("%d pairs of non-parallel URLs loaded (%s)", non_parallel_urls, set_desc)
+    langs_without_data = set()
+
+    for lang, lang_id in _lang2id.items():
+        q = urls_lang_count[lang_id]
+
+        if q > 0:
+            logger.info("%d pairs of URLs loaded (%s): lang %s", parallel_urls, set_desc, lang)
+        else:
+            langs_without_data.add(lang)
+
+    if len(langs_without_data) != 0:
+        langs_without_data = sorted(list(langs_without_data))
+
+        logger.warning("Langs without data: %s", ", ".join(langs_without_data))
 
     if set_desc == "train":
-        min_train_samples = min(non_parallel_urls, parallel_urls)
-        classes_count = np.array([non_parallel_urls, parallel_urls]) # non-parallel URLs label is 0, and
-                                                                     #  parallel URLs label is 1
-        min_classes_weights = min_train_samples / classes_count
+        min_train_samples = min(urls_lang_count)
+        classes_count = np.array(urls_lang_count)
 
-        if kwargs["imbalanced_strategy"] == "none":
-            # Is the data imbalanced? If so, warn about it
+        if 0 in classes_count:
+            # TODO any solution?
 
-            for cw in min_classes_weights:
-                if cw < 0.9:
-                    logger.warning("Your data seems to be imbalanced and you did not select any imbalanced data strategy")
-                    break
+            logger.warning("Can't check out if data is imbalanced because there are classes without data")
+        else:
+            min_classes_weights = min_train_samples / classes_count
+
+            if kwargs["imbalanced_strategy"] == "none":
+                # Is the data imbalanced? If so, warn about it
+
+                for cw in min_classes_weights:
+                    if cw < 0.9:
+                        logger.warning("Your data seems to be imbalanced and you did not select any imbalanced data strategy")
+                        break
 
     logger.debug("Allocated memory after tokenization (%s): %d", set_desc, utils.get_current_allocated_memory_size())
 
@@ -412,7 +461,6 @@ def main(args):
     if lock_file:
         logger.debug("Lock file will be created if the training finishes: %s", lock_file)
 
-    classes = 2
     amp_context_manager, amp_grad_scaler, cuda_amp = get_amp_context_manager(cuda_amp, use_cuda)
 
     if scheduler_str in ("linear",) and train_until_patience:
@@ -601,10 +649,10 @@ def main(args):
 
     dataset_dev, _ = \
         load_dataset(filename_dataset_dev, "dev", 0, **dataset_static_args)
-    # We add symmetric examples in dev as well in order to be sure we get a robust model, but not in test
     dataset_test, _ = \
-        load_dataset(filename_dataset_test, "test", 0, False, **dataset_static_args)
+        load_dataset(filename_dataset_test, "test", 0, **dataset_static_args)
 
+    classes = len(len(_id2lang.keys())) # TODO is it ok?
     criteria = {}
     training_steps = training_steps_per_epoch * epochs # BE AWARE! "epochs" might be fake due to --train-until-patience
 
@@ -1323,7 +1371,8 @@ def initialization():
                              "(e.g. https://www.example.com/resource#position -> https://www.example.com/resource)")
     parser.add_argument('--force-cpu', action="store_true", help="Run on CPU (i.e. do not check if GPU is possible)")
     parser.add_argument('--log-directory', help="Directory where different log files will be stored")
-    parser.add_argument('--regression', action="store_true", help="Apply regression instead of binary classification")
+    parser.add_argument('--regression', action="store_true",
+                        help="Apply regression instead of multiclass classification. Language will not be detected but checked out")
     parser.add_argument('--url-separator', default='/', help="Separator to use when URLs are stringified")
     parser.add_argument('--url-separator-new-token', action="store_true", help="Add special token for URL separator")
     parser.add_argument('--learning-rate', type=float, default=1e-5, help="Learning rate")
