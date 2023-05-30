@@ -49,7 +49,8 @@ _langs_to_detect_alpha_3 = [
     "fij", "ipk", "nso", "run", "sag", "ssw",
     "ton", "tsn", "wol", "zha", "got", "kas",
     "lif", "nau", "sux", "tso", "ven"]
-_langs_to_detect = ["unknown"]
+_unknown_lang_label = "unk"
+_langs_to_detect = [_unknown_lang_label]
 _3_letter_to_2_letter = True # Look for 2-letter code in URLs
 _3_letter_to_2_letter_force = False # Do not add other thing which is not 2-letter code
 
@@ -99,6 +100,19 @@ def get_gs(file):
 
         url, lang = line
 
+        if _3_letter_to_2_letter and len(lang) == 3:
+            lang_alpha_2 = pycountry.languages.get(alpha_3=lang)
+
+            if "alpha_2" in dir(lang_alpha_2) and lang_alpha_2.alpha_2 is not None:
+                lang_alpha_2 = lang_alpha_2.alpha_2
+                lang = lang_alpha_2
+            # else: we don't need a warning: best effort approach
+
+        if lang not in _langs_to_detect:
+            logging.warning("GS: URL language (lang: %s) not in the list of languages to be detected: entry #%d", lang, idx)
+
+            continue
+
         gs.add('\t'.join(line))
 
         if url in url2lang:
@@ -129,13 +143,13 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
     gs_provided = False if len(gs) == 0 else True
 
     for url in urls:
-        detected_lang = "unknown"
+        detected_lang = _unknown_lang_label
         _url = url.lower() if lowercase else url
         importance2lang = {1: [], 2: [], 3: [], 4: []} # Hierarchy: resource variables, subdomain, directory, public suffix
         subdomain, domain, public_suffix = extract(_url, include_psl_private_domains=False)
 
         # Detect lang
-        for lang2check in [lang for lang in _langs_to_detect if lang != "unknown"]:
+        for lang2check in [lang for lang in _langs_to_detect if lang != _unknown_lang_label]:
             if f"lang={lang2check}" in _url or f"language={lang2check}" in _url:
                 importance2lang[1].append(lang2check)
 
@@ -152,27 +166,40 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
         for importance in sorted(importance2lang.keys()):
             langs = importance2lang[importance]
 
-            if len(langs) != 0 and detected_lang == "unknown":
+            if len(langs) != 0 and detected_lang == _unknown_lang_label:
                 detected_lang = langs[0] # Greedy policy: get first detected language with highest importance
 
             logging.debug("Detected languages with importance %d: %s", importance, langs)
 
-        if detected_lang != "unknown":
+        if detected_lang != _unknown_lang_label:
             matches += 1
 
         # Eval
         if gs_provided:
             if url in gs_url2lang:
                 # We only evaluate URLs which are present in the GS
-                y_true.append(gs_url2lang[url])
-                y_pred.append(detected_lang)
+
+                if gs_url2lang[url] in _langs_to_detect:
+                    y_true.append(gs_url2lang[url])
+                    y_pred.append(detected_lang)
+                else:
+                    logging.error("Evaluated URL language (lang: %s) not in the langs to be processed: this will falsify the evaluation: %s", gs_url2lang[url], url)
+                    logging.error("This shouldn't be happening: bug?")
             else:
                 logging.error("Evaluated URL not present in the GS: this will falsify the evaluation: %s", url)
 
         # Print results?
-        if print_pairs and (print_negative_matches or detected_lang != "unknown"):
+        if print_pairs and (print_negative_matches or detected_lang != _unknown_lang_label):
             if print_score:
-                print(f"{url}\t{detected_lang}")
+                if gs_provided:
+                    true_lang = _unknown_lang_label
+
+                    if url in gs_url2lang:
+                        true_lang = gs_url2lang[url]
+
+                    print(f"{url}\t{detected_lang}\t{true_lang}")
+                else:
+                    print(f"{url}\t{detected_lang}")
             else:
                 print(url)
 
@@ -213,24 +240,31 @@ def main(args):
     # Some statistics
     negative_matches = len(urls) - matches
 
-    logging.info("Positive and negative (i.e. language not detected) matches: %d, %d", matches, negative_matches)
+    logging.info("Positive matches (i.e. language detected): %d", matches)
+    logging.info("Negative matches (i.e. language not detected): %d", negative_matches)
 
     if gs_file:
-        logging.info("Using GS in order to get some evaluation metrics. Langs order: %s", str(_langs_to_detect))
+        seen_langs = set.union(set(y_true), set(y_pred))
+
+        seen_langs.discard(_unknown_lang_label)
+
+        seen_langs = sorted(list(seen_langs))
+
+        logging.info("Using GS in order to get some evaluation metrics. Languages to process: %s", str(seen_langs))
 
         # Log metrics
-        confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=_langs_to_detect)
+        confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=seen_langs)
 
         logging.info("GS: confusion matrix: %s", list(confusion_matrix))
 
-        for lang in _langs_to_detect:
-            precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, pos_label=lang)
-            recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, pos_label=lang)
-            f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=_langs_to_detect, pos_label=lang)
+        precision = sklearn.metrics.precision_score(y_true, y_pred, labels=seen_langs, average=None)
+        recall = sklearn.metrics.recall_score(y_true, y_pred, labels=seen_langs, average=None)
+        f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=seen_langs, average=None)
 
-            logging.info("GS: lang %s: precision: %s", lang, precision)
-            logging.info("GS: lang %s: recall: %s", lang, recall)
-            logging.info("GS: lang %s: F1: %s", lang, f1)
+        for idx, lang in enumerate(seen_langs):
+            logging.info("GS: lang %s: precision: %s", lang, precision[idx])
+            logging.info("GS: lang %s: recall: %s", lang, recall[idx])
+            logging.info("GS: lang %s: F1: %s", lang, f1[idx])
 
 def initialization():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
