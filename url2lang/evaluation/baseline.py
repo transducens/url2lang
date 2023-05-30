@@ -51,6 +51,7 @@ _langs_to_detect_alpha_3 = [
     "lif", "nau", "sux", "tso", "ven"]
 _langs_to_detect = ["unknown"]
 _3_letter_to_2_letter = True # Look for 2-letter code in URLs
+_3_letter_to_2_letter_force = False # Do not add other thing which is not 2-letter code
 
 def global_preprocessing():
     global _langs_to_detect
@@ -70,10 +71,15 @@ def global_preprocessing():
                 else:
                     logging.debug("Language %s already loaded: %s", _lang, lang_alpha_2)
             else:
-                if lang_alpha_2 is None or "alpha_2" not in dir(lang_alpha_2) or lang_alpha_2.alpha_2 is None:
-                    logging.error("Language %s couldn't be processed", _lang)
+                if _3_letter_to_2_letter_force:
+                    if lang_alpha_2 is None or "alpha_2" not in dir(lang_alpha_2) or lang_alpha_2.alpha_2 is None:
+                        logging.error("Language %s couldn't be processed", _lang)
+                    else:
+                        logging.error("Language %s couldn't be processed: %s", lang_alpha_2, _lang)
                 else:
-                    logging.error("Language %s couldn't be processed: %s", lang_alpha_2, _lang)
+                    logging.warning("Language %s: couldn't get 2-letter form: using initial value", _lang)
+
+                    _langs_to_detect.append(_lang)
         else:
             _langs_to_detect.append(_lang)
 
