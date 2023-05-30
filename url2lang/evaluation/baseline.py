@@ -87,7 +87,23 @@ def global_preprocessing():
     logging.debug("%d languages loaded (initial languages: %d): %s",
                   len(_langs_to_detect) - initial_languages_skip, len(_langs_to_detect_alpha_3), ", ".join(_langs_to_detect))
 
+_warning_once_done = False
 def get_gs(file):
+    def unk_lang(lang):
+        global _warning_once_done
+
+        if lang == _unknown_lang_label:
+            # Skip URLs whose lang is unknown in the GS
+
+            if not _warning_once_done:
+                _warning_once_done = True
+
+                logging.warning("GS: URLs whose lang is %s are going to be ignored", lang)
+
+            return True
+
+        return False
+
     gs, url2lang, lang2url = set(), {}, {}
 
     for idx, line in enumerate(file, 1):
@@ -100,6 +116,9 @@ def get_gs(file):
 
         url, lang = line
 
+        if unk_lang(lang):
+            continue
+
         if _3_letter_to_2_letter and len(lang) == 3:
             lang_alpha_2 = pycountry.languages.get(alpha_3=lang)
 
@@ -107,6 +126,9 @@ def get_gs(file):
                 lang_alpha_2 = lang_alpha_2.alpha_2
                 lang = lang_alpha_2
             # else: we don't need a warning: best effort approach
+
+        if unk_lang(lang):
+            continue
 
         if lang not in _langs_to_detect:
             logging.warning("GS: URL language (lang: %s) not in the list of languages to be detected: entry #%d", lang, idx)
@@ -169,7 +191,8 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
             if len(langs) != 0 and detected_lang == _unknown_lang_label:
                 detected_lang = langs[0] # Greedy policy: get first detected language with highest importance
 
-            logging.debug("Detected languages with importance %d: %s", importance, langs)
+            if len(langs) != 0:
+                logging.debug("Detected languages with importance %d: %s (url: %s)", importance, langs, url)
 
         if detected_lang != _unknown_lang_label:
             matches += 1
@@ -246,8 +269,6 @@ def main(args):
     if gs_file:
         seen_langs = set.union(set(y_true), set(y_pred))
 
-        seen_langs.discard(_unknown_lang_label)
-
         seen_langs = sorted(list(seen_langs))
 
         logging.info("Using GS in order to get some evaluation metrics. Languages to process: %s", str(seen_langs))
@@ -255,16 +276,28 @@ def main(args):
         # Log metrics
         confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=seen_langs)
 
-        logging.info("GS: confusion matrix: %s", list(confusion_matrix))
+        #logging.info("GS: confusion matrix: %s", list(confusion_matrix))
 
         precision = sklearn.metrics.precision_score(y_true, y_pred, labels=seen_langs, average=None)
         recall = sklearn.metrics.recall_score(y_true, y_pred, labels=seen_langs, average=None)
         f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=seen_langs, average=None)
 
         for idx, lang in enumerate(seen_langs):
+            incorrect = sum(list(confusion_matrix[idx])) - confusion_matrix[idx][idx]
+
+            logging.info("GS: lang %s: confusion matrix row: %s (ok: %d; nok: %d)", lang, list(confusion_matrix[idx]), confusion_matrix[idx][idx], incorrect)
             logging.info("GS: lang %s: precision: %s", lang, precision[idx])
             logging.info("GS: lang %s: recall: %s", lang, recall[idx])
             logging.info("GS: lang %s: F1: %s", lang, f1[idx])
+
+        for average in ("micro", "macro"):
+            precision = sklearn.metrics.precision_score(y_true, y_pred, labels=seen_langs, average=average)
+            recall = sklearn.metrics.recall_score(y_true, y_pred, labels=seen_langs, average=average)
+            f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=seen_langs, average=average)
+
+            logging.info("GS: %s precision: %s", average, precision)
+            logging.info("GS: %s recall: %s", average, recall)
+            logging.info("GS: %s F1: %s", average, f1)
 
 def initialization():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
