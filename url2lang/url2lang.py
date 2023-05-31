@@ -97,8 +97,10 @@ _optimizer_args = {
         "type": utils.argparse_nargs_type(float, float),
     }
 }
+_unknown_lang_label = "unk"
+_langs_to_detect_alpha_3 = [_unknown_lang_label]
 # Languages from: https://commoncrawl.github.io/cc-crawl-statistics/plots/languages
-_langs_to_detect_alpha_3 = [
+_langs_to_detect_alpha_3 += [
     "eng", "deu", "rus", "fra", "zho", "spa",
     "jpn", "ita", "nld", "pol", "por", "ces",
     "vie", "tur", "ind", "swe", "ara", "fas",
@@ -126,8 +128,6 @@ _langs_to_detect_alpha_3 = [
     "fij", "ipk", "nso", "run", "sag", "ssw",
     "ton", "tsn", "wol", "zha", "got", "kas",
     "lif", "nau", "sux", "tso", "ven"]
-_unknown_lang_label = "unk"
-_langs_to_detect_alpha_3 += _unknown_lang_label
 _lang2id = {_lang: idx for idx, _lang in enumerate(_langs_to_detect_alpha_3)} # id range: [0, len(_langs_to_detect_alpha_3) - 1]
 _id2lang = {idx: _lang for _lang, idx in _lang2id.items()}
 
@@ -279,10 +279,11 @@ def load_dataset(filename_dataset, set_desc, shard_id, **kwargs):
             raise Exception(f"Different lengths for input and output data in {set_desc} set: {len(input_data)} vs {len(output_data)}")
 
     urls_lang_count = [len([l for l in output_data if l == c]) for c in sorted(_id2lang.keys())]
+    total_data = sum(urls_lang_count)
 
-    if sum(urls_lang_count) != len(input_data):
+    if total_data != len(input_data):
         raise Exception(f"Number of URLs per lang doesn't match the input data ({set_desc}): "
-                        f"{sum(urls_lang_count)} != {len(input_data)}")
+                        f"{total_data} != {len(input_data)}")
 
     langs_without_data = set()
 
@@ -290,7 +291,9 @@ def load_dataset(filename_dataset, set_desc, shard_id, **kwargs):
         q = urls_lang_count[lang_id]
 
         if q > 0:
-            logger.info("%d pairs of URLs loaded (%s): lang %s", parallel_urls, set_desc, lang)
+            p = q * 100.0 / total_data
+
+            logger.info("%d pairs of URLs loaded (%s): lang %s (%s %%)", q, set_desc, lang, f"{p:.2f}")
         else:
             langs_without_data.add(lang)
 
@@ -652,7 +655,7 @@ def main(args):
     dataset_test, _ = \
         load_dataset(filename_dataset_test, "test", 0, **dataset_static_args)
 
-    classes = len(len(_id2lang.keys())) # TODO is it ok?
+    classes = len(_id2lang.keys()) # TODO is it ok?
     criteria = {}
     training_steps = training_steps_per_epoch * epochs # BE AWARE! "epochs" might be fake due to --train-until-patience
 
@@ -824,8 +827,8 @@ def main(args):
     show_statistics_every_batches = 50
     final_loss = 0.0
     final_acc = 0.0
-    final_acc_per_class = np.zeros(2)
-    final_f1_per_class = np.zeros(2)
+    final_acc_per_class = np.zeros(classes)
+    final_f1_per_class = np.zeros(classes)
     final_macro_f1 = 0.0
     final_mcc = 0.0
     best_dev = np.inf * (1 if best_values_minimize else -1)
@@ -854,8 +857,8 @@ def main(args):
 
         epoch_loss = 0.0
         epoch_acc = 0.0
-        epoch_acc_per_class = np.zeros(2)
-        epoch_f1_per_class = np.zeros(2)
+        epoch_acc_per_class = np.zeros(classes)
+        epoch_f1_per_class = np.zeros(classes)
         epoch_macro_f1 = 0.0
         all_outputs = {aux_task: [] for aux_task in all_tasks}
         all_labels = {aux_task: [] for aux_task in all_tasks}
@@ -1063,10 +1066,10 @@ def main(args):
                 final_mcc += epoch_mcc
 
             logger.info("[train:epoch#%d] Avg. loss: %f", epoch + 1, epoch_loss)
-            logger.info("[train:epoch#%d] Acc (task '%s'): %.2f %% (%.2f %% non-parallel and %.2f %% parallel)",
-                        epoch + 1, aux_task, epoch_acc * 100.0, epoch_acc_per_class[0] * 100.0, epoch_acc_per_class[1] * 100.0)
-            logger.info("[train:epoch#%d] Values per class (task '%s'; non-parallel:f1, parallel:f1): (%.2f %%, %.2f %%)",
-                        epoch + 1, aux_task, epoch_f1_per_class[0] * 100.0, epoch_f1_per_class[1] * 100.0)
+            logger.info("[train:epoch#%d] Acc (task '%s'): %.2f %% (%s)",
+                        epoch + 1, aux_task, epoch_acc * 100.0, "; ".join([f"{_lang}: {epoch_acc_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
+            logger.info("[train:epoch#%d] Values per class (task '%s'; f1): (%s)",
+                        epoch + 1, aux_task, "; ".join([f"{_lang}: {epoch_f1_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
             logger.info("[train:epoch#%d] Macro F1 (task '%s'): %.2f %%", epoch + 1, aux_task, epoch_macro_f1 * 100.0)
             logger.info("[train:epoch#%d] MCC (task '%s'): %.2f %%", epoch + 1, aux_task, epoch_mcc * 100.0)
 
@@ -1081,12 +1084,13 @@ def main(args):
             dev_mcc = dev_inference_metrics["metrics"][aux_task]["mcc"]
 
             logger.info("[dev:epoch#%d] Avg. loss: %f", epoch + 1, dev_loss)
-            logger.info("[dev:epoch#%d] Acc (task '%s'): %.2f %% (%.2f %% non-parallel and %.2f %% parallel)",
-                        epoch + 1, aux_task, dev_acc * 100.0, dev_acc_per_class[0] * 100.0, dev_acc_per_class[1] * 100.0)
-            logger.info("[dev:epoch#%d] Values per class (task '%s'; non-parallel:precision|recall|f1, parallel:precision|recall|f1): "
-                        "(%.2f %% | %.2f %% | %.2f %%, %.2f %% | %.2f %% | %.2f %%)", epoch + 1, aux_task,
-                        dev_precision_per_class[0] * 100.0, dev_recall_per_class[0] * 100.0, dev_f1_per_class[0] * 100.0,
-                        dev_precision_per_class[1] * 100.0, dev_recall_per_class[1] * 100.0, dev_f1_per_class[1] * 100.0)
+            logger.info("[dev:epoch#%d] Acc (task '%s'): %.2f %% (%s)",
+                        epoch + 1, aux_task, dev_acc * 100.0, "; ".join([f"{_lang}: {dev_acc_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
+            logger.info("[dev:epoch#%d] Values per class (task '%s'; precision|recall|f1): "
+                        "(%s | %s | %s)", epoch + 1, aux_task,
+                        "; ".join([f"{_lang}: {dev_precision_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]),
+                        "; ".join([f"{_lang}: {dev_recall_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]),
+                        "; ".join([f"{_lang}: {dev_f1_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
             logger.info("[dev:epoch#%d] Macro F1 (task '%s'): %.2f %%", epoch + 1, aux_task, dev_macro_f1 * 100.0)
             logger.info("[dev:epoch#%d] MCC (task '%s'): %.2f %%", epoch + 1, aux_task, dev_mcc * 100.0)
 
@@ -1190,10 +1194,10 @@ def main(args):
     final_mcc /= epoch
 
     logger.info("[train] Avg. loss: %f", final_loss)
-    logger.info("[train] Avg. acc: %.2f %% (%.2f %% non-parallel and %.2f %% parallel)",
-                final_acc * 100.0, final_acc_per_class[0] * 100.0, final_acc_per_class[1] * 100.0)
-    logger.info("[train] Avg. values per class (non-parallel:f1, parallel:f1): (%.2f %%, %.2f %%)",
-                final_f1_per_class[0] * 100.0, final_f1_per_class[1] * 100.0)
+    logger.info("[train] Avg. acc: %.2f %% (%s)",
+                final_acc * 100.0, "; ".join([f"{_lang}: {final_acc_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
+    logger.info("[train] Avg. values per class (f1): (%s)",
+                "; ".join([f"{_lang}: {final_f1_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
     logger.info("[train] Avg. macro F1: %.2f %%", final_macro_f1 * 100.0)
     logger.info("[train] Avg. MCC: %.2f %%", final_mcc * 100.0)
 
@@ -1227,12 +1231,13 @@ def main(args):
         dev_macro_f1 = dev_inference_metrics["metrics"][aux_task]["macro_f1"]
         dev_mcc = dev_inference_metrics["metrics"][aux_task]["mcc"]
 
-        logger.info("[dev] Acc (task '%s'): %.2f %% (%.2f %% non-parallel and %.2f %% parallel)", aux_task,
-                    dev_acc * 100.0, dev_acc_per_class[0] * 100.0, dev_acc_per_class[1] * 100.0)
-        logger.info("[dev] Values per class (task '%s'; non-parallel:precision|recall|f1, parallel:precision|recall|f1): "
-                    "(%.2f %% | %.2f %% | %.2f %%, %.2f %% | %.2f %% | %.2f %%)", aux_task,
-                    dev_precision_per_class[0] * 100.0, dev_recall_per_class[0] * 100.0, dev_f1_per_class[0] * 100.0,
-                    dev_precision_per_class[1] * 100.0, dev_recall_per_class[1] * 100.0, dev_f1_per_class[1] * 100.0)
+        logger.info("[dev] Acc (task '%s'): %.2f %% (%s)", aux_task,
+                    dev_acc * 100.0, "; ".join([f"{_lang}: {dev_acc_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
+        logger.info("[dev] Values per class (task '%s'; precision|recall|f1): "
+                    "(%s | %s | %s)", aux_task,
+                    "; ".join([f"{_lang}: {dev_precision_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]),
+                    "; ".join([f"{_lang}: {dev_recall_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]),
+                    "; ".join([f"{_lang}: {dev_f1_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
         logger.info("[dev] Macro F1 (task '%s'): %.2f %%", aux_task, dev_macro_f1 * 100.0)
         logger.info("[dev] MCC (task '%s'): %.2f %%", aux_task, dev_mcc * 100.0)
 
@@ -1253,12 +1258,13 @@ def main(args):
         test_macro_f1 = test_inference_metrics["metrics"][aux_task]["macro_f1"]
         test_mcc = test_inference_metrics["metrics"][aux_task]["mcc"]
 
-        logger.info("[test] Acc (task '%s'): %.2f %% (%.2f %% non-parallel and %.2f %% parallel)", aux_task,
-                    test_acc * 100.0, test_acc_per_class[0] * 100.0, test_acc_per_class[1] * 100.0)
-        logger.info("[test] Values per class (task '%s'; non-parallel:precision|recall|f1, parallel:precision|recall|f1): "
-                    "(%.2f %% | %.2f %% | %.2f %%, %.2f %% | %.2f %% | %.2f %%)", aux_task,
-                    test_precision_per_class[0] * 100.0, test_recall_per_class[0] * 100.0, test_f1_per_class[0] * 100.0,
-                    test_precision_per_class[1] * 100.0, test_recall_per_class[1] * 100.0, test_f1_per_class[1] * 100.0)
+        logger.info("[test] Acc (task '%s'): %.2f %% (%s)", aux_task,
+                    test_acc * 100.0, "; ".join([f"{_lang}: {test_acc_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
+        logger.info("[test] Values per class (task '%s'; precision|recall|f1): "
+                    "(%s | %s | %s)", aux_task,
+                    "; ".join([f"{_lang}: {test_precision_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]),
+                    "; ".join([f"{_lang}: {test_recall_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]),
+                    "; ".join([f"{_lang}: {test_f1_per_class[_id] * 100.0:.2f} %" for _lang, _id in _lang2id.items()]))
         logger.info("[test] Macro F1 (task '%s'): %.2f %%", aux_task, test_macro_f1 * 100.0)
         logger.info("[test] MCC (task '%s'): %.2f %%", aux_task, test_mcc * 100.0)
 

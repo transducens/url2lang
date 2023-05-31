@@ -10,7 +10,7 @@ import argparse
 
 import torch
 
-import url2lang
+import url2lang.url2lang as url2lang
 
 logger = logging.getLogger("url2lang")
 
@@ -92,6 +92,7 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
 
     for idx, url in enumerate(iterator, 1):
         url = url.strip().split('\t')
+        initial_url = url[0]
 
         if inference:
             # Format:
@@ -118,19 +119,19 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
         if inference and len(url) in (2,):
             target_output = -1 # We don't know the result since inference=True
         else:
-            if true_lang in url2lang._lang2id:
+            if true_lang in url2lang._lang2id.keys():
                 target_output = url2lang._lang2id[true_lang]
             else:
-                logger.warning("URL skipped since its language (%s) is not supported: %s", true_lang, src_url)
+                logger.warning("URL skipped since its language (%s) is not supported: %s", true_lang, initial_url)
 
                 continue
 
         if tokenizer.sep_token in src_url:
-            logger.warning("URL skipped since they contain the separator token: %s", src_url)
+            logger.warning("URL skipped since they contain the separator token: %s", initial_url)
 
             continue
 
-        initial_urls.append(url[0])
+        initial_urls.append(initial_url)
         urls["urls"].append(f"{src_url}")
         urls["labels_task_language_identification"].append(target_output)
 

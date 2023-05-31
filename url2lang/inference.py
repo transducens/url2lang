@@ -9,6 +9,7 @@ from url2lang.metrics import (
     get_metrics_task_specific,
 )
 import url2lang.preprocess as preprocess
+import url2lang.url2lang as url2lang
 
 import numpy as np
 import torch
@@ -247,13 +248,13 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
             initial_src_urls = [u[0] for u in initial_urls]
         else:
             initial_src_urls = [input("url: ").strip()]
-            src_url_lang = input("url lang: ").strip()
+            #src_url_lang = input("url lang: ").strip()
 
             if not initial_src_urls[0]:
                 break
 
             src_url = initial_src_urls[0]
-            data = f"{src_url}\t{src_url_lang}"
+            data = f"{src_url}"
             data = [data]
             target_urls = next(utils.tokenize_batch_from_iterator(data, tokenizer, batch_size,
                                f=lambda u: preprocess.preprocess_url(u, remove_protocol_and_authority=remove_authority,
@@ -307,19 +308,22 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
                                 f"({outputs.numpy().shape[0]} vs {len(initial_src_urls)})")
 
             if parallel_likelihood:
-                for data, initial_src_url in zip(outputs.numpy(), initial_src_urls):
+                for argmax, data, initial_src_url in zip(outputs_argmax, outputs.numpy(), initial_src_urls):
                     if task in ("language-identification",):
                         regression = results[task]["regression"]
-                        likelihood = data if regression else data[1] # parallel
+                        likelihood = data if regression else data[argmax]
+                        lang = url2lang._id2lang[argmax]
 
                         if likelihood >= threshold:
-                            print(f"{task}\t{likelihood:.4f}\t{initial_src_url}")
+                            print(f"{task}\t{lang}: {likelihood:.4f}\t{initial_src_url}")
                     else:
                         print(f"{task}\t{data}\t{initial_src_url}")
             else:
                 for argmax, initial_src_url in zip(outputs_argmax, initial_src_urls):
                     if task in ("language-identification",):
-                        print(f"{task}\t{'positive' if argmax == 1 else 'negative'}\t{initial_src_url}")
+                        lang = url2lang._id2lang[argmax]
+
+                        print(f"{task}\t{lang}\t{initial_src_url}")
                     else:
                         print(f"{task}\t{argmax}\t{initial_src_url}")
 
@@ -347,7 +351,7 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
 
     # Process URLs
     src_urls = [src_url.replace('\t', ' ') for src_url in src_urls]
-    str_urls = [f"{src_url}\t{src_urls_lang}" for src_url, trg_url in zip(src_urls, src_urls_lang)]
+    str_urls = [f"{src_url}" for src_url, trg_url in zip(src_urls, src_urls_lang)]
 
     urls_generator = utils.tokenize_batch_from_iterator(str_urls, tokenizer, batch_size,
                             f=lambda u: preprocess.preprocess_url(u, remove_protocol_and_authority=remove_authority,
@@ -378,10 +382,10 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
                                 f"{outputs.numpy().shape[0]} vs {len(src_urls)}")
 
             if parallel_likelihood:
-                _results = [data if regression else data[1] for data in outputs.numpy()]
-                _results = [likelihood for likelihood in _results if likelihood >= threshold]
+                _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax, outputs.numpy())]
+                _results = [f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
             else:
-                _results = ['positive' if argmax == 1 else 'negative' for argmax in outputs_argmax]
+                _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax]
 
             all_results[task].extend(_results)
 
