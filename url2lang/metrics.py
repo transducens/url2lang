@@ -130,7 +130,7 @@ def get_metrics(outputs_argmax, labels, current_batch_size, classes=2, batch_idx
         logger.debug("[train:batch#%d] Acc (task '%s'): %.2f %% (%s)",
                      batch_idx + 1, task, acc * 100.0, "; ".join([f"{_lang}: {acc_per_class[_id] * 100.0:.2f} %" for _lang, _id in url2lang._lang2id.items()]))
         logger.debug("[train:batch#%d] Values per class (task '%s'; precision|recall|f1): "
-                     "(%d -> %s | %s | %s)", batch_idx + 1, task,
+                     "(%s | %s | %s)", batch_idx + 1, task,
                      "; ".join([f"{no_values_per_class[_id]} -> {_lang}: {precision[_id] * 100.0:.2f} %" for _lang, _id in url2lang._lang2id.items()]),
                      "; ".join([f"{no_values_per_class[_id]} -> {_lang}: {recall[_id] * 100.0:.2f} %" for _lang, _id in url2lang._lang2id.items()]),
                      "; ".join([f"{no_values_per_class[_id]} -> {_lang}: {f1[_id] * 100.0:.2f} %" for _lang, _id in url2lang._lang2id.items()]))
