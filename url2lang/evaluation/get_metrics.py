@@ -70,7 +70,7 @@ def global_preprocessing():
                   len(_langs_to_detect) - initial_languages_skip, len(_langs_to_detect_alpha_3), ", ".join(_langs_to_detect))
 
 _warning_once_done = False
-def get_gs(file):
+def get_gs(file, ignore_unk=True):
     def unk_lang(lang):
         global _warning_once_done
 
@@ -98,7 +98,7 @@ def get_gs(file):
 
         url, lang = line
 
-        if unk_lang(lang):
+        if ignore_unk and unk_lang(lang):
             continue
 
         if _3_letter_to_2_letter and len(lang) == 3:
@@ -109,7 +109,7 @@ def get_gs(file):
                 lang = lang_alpha_2
             # else: we don't need a warning: best effort approach
 
-        if unk_lang(lang):
+        if ignore_unk and unk_lang(lang):
             continue
 
         if lang not in _langs_to_detect:
@@ -148,8 +148,8 @@ def main(args):
     input_file = args.input
     gs_file = args.gold_standard
 
-    ifile, ifile_url2lang, ifile_lang2url = get_gs(input_file)
-    gs, gs_url2lang, gs_lang2url = get_gs(gs_file)
+    ifile, ifile_url2lang, ifile_lang2url = get_gs(input_file, ignore_unk=False)
+    gs, gs_url2lang, gs_lang2url = get_gs(gs_file, ignore_unk=True)
     seen_urls = 0
     y_pred, y_true = [], []
 
@@ -209,7 +209,9 @@ def main(args):
         logging.info("GS: %s F1: %s", average, f1)
 
     mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
+    acc = sklearn.metrics.accuracy_score(y_true, y_pred)
 
+    logging.info("GS: Accuracy: %s", acc)
     logging.info("GS: MCC: %s", mcc)
 
 def initialization():
