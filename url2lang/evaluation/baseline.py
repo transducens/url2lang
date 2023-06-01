@@ -1,6 +1,4 @@
 
-# Based on https://aclanthology.org/W16-2366.pdf 4.2
-
 import os
 import sys
 import logging
@@ -10,6 +8,7 @@ cdir = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.insert(0, f"{cdir}/../..")
 
+import url2lang.url2lang as url2lang
 import url2lang.utils.utils as utils
 
 import sklearn.metrics
@@ -19,38 +18,11 @@ import pycountry
 # Disable (less verbose) 3rd party logging
 logging.getLogger("filelock").setLevel(logging.WARNING)
 
-# Languages from: https://commoncrawl.github.io/cc-crawl-statistics/plots/languages
 # Order is relevant (because of greedy policy): same order as found in source
-_langs_to_detect_alpha_3 = [
-    "eng", "deu", "rus", "fra", "zho", "spa",
-    "jpn", "ita", "nld", "pol", "por", "ces",
-    "vie", "tur", "ind", "swe", "ara", "fas",
-    "kor", "hun", "ell", "ron", "dan", "fin",
-    "tha", "slk", "nor", "ukr", "bul", "cat",
-    "srp", "hrv", "slv", "lit", "hin", "est",
-    "heb", "lat", "ben", "lav", "msa", "bos",
-    "sqi", "tam", "glg", "isl", "aze", "kat",
-    "mkd", "eus", "hye", "nep", "urd", "mon",
-    "mal", "kaz", "mar", "tel", "nno", "bel",
-    "uzb", "guj", "kan", "mya", "khm", "cym",
-    "epo", "tgl", "sin", "afr", "tat", "swa",
-    "gle", "pan", "kur", "kir", "tgk", "mlt",
-    "fao", "ori", "lao", "som", "ltz", "oci",
-    "amh", "fry", "bak", "pus", "san", "bre",
-    "mlg", "hau", "tuk", "war", "asm", "cos",
-    "div", "jav", "ceb", "kin", "hat", "zul",
-    "gla", "bod", "xho", "yid", "snd", "mri",
-    "uig", "roh", "sun", "kal", "yor", "tir",
-    "abk", "bih", "haw", "hmn", "ina", "que",
-    "grn", "ibo", "nya", "sco", "sna", "sot",
-    "smo", "vol", "glv", "orm", "ile", "syr",
-    "aar", "dzo", "iku", "kha", "lin", "lug",
-    "mfe", "aka", "aym", "bis", "chr", "crs",
-    "fij", "ipk", "nso", "run", "sag", "ssw",
-    "ton", "tsn", "wol", "zha", "got", "kas",
-    "lif", "nau", "sux", "tso", "ven"]
-_unknown_lang_label = "unk"
+_langs_to_detect_alpha_3 = url2lang._langs_to_detect_alpha_3
+_unknown_lang_label = url2lang._unknown_lang_label
 _langs_to_detect = [_unknown_lang_label]
+
 _3_letter_to_2_letter = True # Look for 2-letter code in URLs
 _3_letter_to_2_letter_force = False # Do not add other thing which is not 2-letter code
 
@@ -61,16 +33,17 @@ def global_preprocessing():
 
     # Get languages which will be detected in URLs
     for _lang in _langs_to_detect_alpha_3:
+        if _lang == _unknown_lang_label:
+            # Unknown data will not be taken into account
+            continue
+
+        _lang_to_add = None
+
         if _3_letter_to_2_letter:
             lang_alpha_2 = pycountry.languages.get(alpha_3=_lang)
 
             if "alpha_2" in dir(lang_alpha_2) and lang_alpha_2.alpha_2 is not None:
-                lang_alpha_2 = lang_alpha_2.alpha_2
-
-                if lang_alpha_2 not in _langs_to_detect:
-                    _langs_to_detect.append(lang_alpha_2)
-                else:
-                    logging.debug("Language %s already loaded: %s", _lang, lang_alpha_2)
+                _lang_to_add = lang_alpha_2.alpha_2
             else:
                 if _3_letter_to_2_letter_force:
                     if lang_alpha_2 is None or "alpha_2" not in dir(lang_alpha_2) or lang_alpha_2.alpha_2 is None:
@@ -80,9 +53,16 @@ def global_preprocessing():
                 else:
                     logging.warning("Language %s: couldn't get 2-letter form: using initial value", _lang)
 
-                    _langs_to_detect.append(_lang)
+                    _lang_to_add = _lang
         else:
-            _langs_to_detect.append(_lang)
+            _lang_to_add = _lang
+
+        # Add lang
+        if _lang_to_add is not None:
+            if _lang_to_add not in _langs_to_detect:
+                _langs_to_detect.append(_lang_to_add)
+            else:
+                logging.debug("Language %s already loaded: %s", _lang, _lang_to_add)
 
     logging.debug("%d languages loaded (initial languages: %d): %s",
                   len(_langs_to_detect) - initial_languages_skip, len(_langs_to_detect_alpha_3), ", ".join(_langs_to_detect))
@@ -268,21 +248,23 @@ def main(args):
 
     if gs_file:
         seen_langs = set.union(set(y_true), set(y_pred))
-
         seen_langs = sorted(list(seen_langs))
 
         logging.info("Using GS in order to get some evaluation metrics. Languages to process: %s", str(seen_langs))
 
         # Log metrics
-        confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=seen_langs)
+        confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=_langs_to_detect)
 
         #logging.info("GS: confusion matrix: %s", list(confusion_matrix))
 
-        precision = sklearn.metrics.precision_score(y_true, y_pred, labels=seen_langs, average=None)
-        recall = sklearn.metrics.recall_score(y_true, y_pred, labels=seen_langs, average=None)
-        f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=seen_langs, average=None)
+        precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, average=None)
+        recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, average=None)
+        f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=_langs_to_detect, average=None)
 
-        for idx, lang in enumerate(seen_langs):
+        for idx, lang in enumerate(_langs_to_detect):
+            if lang not in seen_langs:
+                continue
+
             incorrect = sum(list(confusion_matrix[idx])) - confusion_matrix[idx][idx]
 
             logging.info("GS: lang %s: confusion matrix row: %s (ok: %d; nok: %d)", lang, list(confusion_matrix[idx]), confusion_matrix[idx][idx], incorrect)
@@ -291,9 +273,9 @@ def main(args):
             logging.info("GS: lang %s: F1: %s", lang, f1[idx])
 
         for average in ("micro", "macro"):
-            precision = sklearn.metrics.precision_score(y_true, y_pred, labels=seen_langs, average=average)
-            recall = sklearn.metrics.recall_score(y_true, y_pred, labels=seen_langs, average=average)
-            f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=seen_langs, average=average)
+            precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, average=average)
+            recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, average=average)
+            f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=_langs_to_detect, average=average)
 
             logging.info("GS: %s precision: %s", average, precision)
             logging.info("GS: %s recall: %s", average, recall)

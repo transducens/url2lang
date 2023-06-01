@@ -114,11 +114,11 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
         else:
             src_url = url[0]
 
-        true_lang = url[1]
-
-        if inference and len(url) in (2,):
+        if inference and len(url) in (1,):
             target_output = -1 # We don't know the result since inference=True
         else:
+            true_lang = url[1]
+
             if true_lang in url2lang._lang2id.keys():
                 target_output = url2lang._lang2id[true_lang]
             else:
@@ -131,7 +131,7 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
 
             continue
 
-        initial_urls.append(initial_url)
+        initial_urls.append([initial_url])
         urls["urls"].append(f"{src_url}")
         urls["labels_task_language_identification"].append(target_output)
 

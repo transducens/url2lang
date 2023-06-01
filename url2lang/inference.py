@@ -308,7 +308,7 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
                                 f"({outputs.numpy().shape[0]} vs {len(initial_src_urls)})")
 
             if parallel_likelihood:
-                for argmax, data, initial_src_url in zip(outputs_argmax, outputs.numpy(), initial_src_urls):
+                for argmax, data, initial_src_url in zip(outputs_argmax.numpy(), outputs.numpy(), initial_src_urls):
                     if task in ("language-identification",):
                         regression = results[task]["regression"]
                         likelihood = data if regression else data[argmax]
@@ -319,7 +319,7 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
                     else:
                         print(f"{task}\t{data}\t{initial_src_url}")
             else:
-                for argmax, initial_src_url in zip(outputs_argmax, initial_src_urls):
+                for argmax, initial_src_url in zip(outputs_argmax.numpy(), initial_src_urls):
                     if task in ("language-identification",):
                         lang = url2lang._id2lang[argmax]
 
@@ -382,10 +382,10 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
                                 f"{outputs.numpy().shape[0]} vs {len(src_urls)}")
 
             if parallel_likelihood:
-                _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax, outputs.numpy())]
-                _results = [f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
+                _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax.numpy(), outputs.numpy())]
+                _results = [f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax.numpy(), _results) if likelihood >= threshold]
             else:
-                _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax]
+                _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax.numpy()]
 
             all_results[task].extend(_results)
 
