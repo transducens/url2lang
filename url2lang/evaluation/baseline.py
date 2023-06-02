@@ -3,12 +3,13 @@ import os
 import sys
 import logging
 import argparse
+import urllib.parse as urlparse
 
 cdir = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.insert(0, f"{cdir}/../..")
 
-import url2lang.url2lang as url2lang
+import url2lang.url2lang as url2lang_imp
 import url2lang.utils.utils as utils
 
 import sklearn.metrics
@@ -19,53 +20,12 @@ import pycountry
 logging.getLogger("filelock").setLevel(logging.WARNING)
 
 # Order is relevant (because of greedy policy): same order as found in source
-_langs_to_detect_alpha_3 = url2lang._langs_to_detect_alpha_3
-_unknown_lang_label = url2lang._unknown_lang_label
-_langs_to_detect = [_unknown_lang_label]
+_langs_to_detect_alpha_3 = url2lang_imp._langs_to_detect_alpha_3
+_unknown_lang_label = url2lang_imp._unknown_lang_label
+_langs_to_detect = [_unknown_lang_label] + _langs_to_detect_alpha_3
 
-_3_letter_to_2_letter = True # Look for 2-letter code in URLs
-_3_letter_to_2_letter_force = False # Do not add other thing which is not 2-letter code
-
-def global_preprocessing():
-    global _langs_to_detect
-
-    initial_languages_skip = len(_langs_to_detect)
-
-    # Get languages which will be detected in URLs
-    for _lang in _langs_to_detect_alpha_3:
-        if _lang == _unknown_lang_label:
-            # Unknown data will not be taken into account
-            continue
-
-        _lang_to_add = None
-
-        if _3_letter_to_2_letter:
-            lang_alpha_2 = pycountry.languages.get(alpha_3=_lang)
-
-            if "alpha_2" in dir(lang_alpha_2) and lang_alpha_2.alpha_2 is not None:
-                _lang_to_add = lang_alpha_2.alpha_2
-            else:
-                if _3_letter_to_2_letter_force:
-                    if lang_alpha_2 is None or "alpha_2" not in dir(lang_alpha_2) or lang_alpha_2.alpha_2 is None:
-                        logging.error("Language %s couldn't be processed", _lang)
-                    else:
-                        logging.error("Language %s couldn't be processed: %s", lang_alpha_2, _lang)
-                else:
-                    logging.warning("Language %s: couldn't get 2-letter form: using initial value", _lang)
-
-                    _lang_to_add = _lang
-        else:
-            _lang_to_add = _lang
-
-        # Add lang
-        if _lang_to_add is not None:
-            if _lang_to_add not in _langs_to_detect:
-                _langs_to_detect.append(_lang_to_add)
-            else:
-                logging.debug("Language %s already loaded: %s", _lang, _lang_to_add)
-
-    logging.debug("%d languages loaded (initial languages: %d): %s",
-                  len(_langs_to_detect) - initial_languages_skip, len(_langs_to_detect_alpha_3), ", ".join(_langs_to_detect))
+_check_2_letter_too = True
+_check_lang_name_too = False
 
 _warning_once_done = False
 def get_gs(file):
@@ -99,13 +59,10 @@ def get_gs(file):
         if unk_lang(lang):
             continue
 
-        if _3_letter_to_2_letter and len(lang) == 3:
-            lang_alpha_2 = pycountry.languages.get(alpha_3=lang)
+        if len(lang) != 3:
+            logging.warning("GS: URL lang (lang: %s) was expected to be ISO 639-2: entry #%d", lang, idx)
 
-            if "alpha_2" in dir(lang_alpha_2) and lang_alpha_2.alpha_2 is not None:
-                lang_alpha_2 = lang_alpha_2.alpha_2
-                lang = lang_alpha_2
-            # else: we don't need a warning: best effort approach
+            continue
 
         if unk_lang(lang):
             continue
@@ -138,8 +95,28 @@ def get_gs(file):
 
     return gs, url2lang, lang2url
 
+_importance_hierarchy = [1, 2, 3, 4]    # variables, subdomain, directory and public suffix
+                                        # Research purposes: which order is the best? Set using U2L_IMPORTANCE_HIERARCHY envvar
 def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=True,
              print_negative_matches=False, print_score=False):
+    global _importance_hierarchy
+
+    if "U2L_IMPORTANCE_HIERARCHY" in os.environ:
+        _importance_hierarchy_tmp = os.environ["U2L_IMPORTANCE_HIERARCHY"].rstrip(" \r\n").split(',')
+
+        if len(_importance_hierarchy_tmp) != len(_importance_hierarchy):
+            logging.warning("Unexpected envvar format: %d fields split by comma were expected: U2L_IMPORTANCE_HIERARCHY", len(_importance_hierarchy))
+        else:
+            try:
+                _importance_hierarchy_tmp = list(map(int, _importance_hierarchy_tmp))
+                _importance_hierarchy = _importance_hierarchy_tmp
+
+                logging.debug("_importance_hierarchy has been modified")
+            except:
+                logging.warning("Unexpected envvar format: int values were expected: U2L_IMPORTANCE_HIERARCHY")
+
+    logging.debug("_importance_hierarchy: %s", ", ".join(map(str, _importance_hierarchy)))
+
     y_pred, y_true = [], []
     matches = 0
     gs_provided = False if len(gs) == 0 else True
@@ -150,19 +127,49 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
         importance2lang = {1: [], 2: [], 3: [], 4: []} # Hierarchy: resource variables, subdomain, directory, public suffix
         subdomain, domain, public_suffix = extract(_url, include_psl_private_domains=False)
 
+        if len(importance2lang.keys()) != len(_importance_hierarchy):
+            raise Exception("Bug: importance2lang length != _importance_hierarchy length")
+        if len(set.intersection(set(importance2lang.keys()), set(_importance_hierarchy))) != len(importance2lang.keys()):
+            raise Exception("Bug: the defined 'importance' levels are not the same")
+
         # Detect lang
         for lang2check in [lang for lang in _langs_to_detect if lang != _unknown_lang_label]:
-            if f"lang={lang2check}" in _url or f"language={lang2check}" in _url:
-                importance2lang[1].append(lang2check)
+            all_langs2check = [lang2check] # All langs "related" to lang2check (e.g. 2-letter code, full language name)
+            lang_pyc = pycountry.languages.get(alpha_3=lang2check)
 
-            if subdomain and subdomain == lang2check:
-                importance2lang[2].append(lang2check)
+            if lang_pyc is not None:
+                if _check_2_letter_too:
+                    if "alpha_2" in dir(lang_pyc) and lang_pyc.alpha_2 is not None:
+                        _tmp_lang = lang_pyc.alpha_2
 
-            if f"/{lang2check}/" in _url or _url.endswith(f"/{lang2check}"):
-                importance2lang[3].append(lang2check)
+                        if _tmp_lang and len(_tmp_lang) == 2:
+                            all_langs2check.append(_tmp_lang)
+                    # else: we don't need a warning: best effort approach
+                if _check_lang_name_too:
+                    if "name" in dir(lang_pyc) and lang_pyc.name is not None:
+                        _tmp_lang = str.lower(lang_pyc.name)
 
-            if public_suffix and public_suffix == lang2check:
-                importance2lang[4].append(lang2check)
+                        if _tmp_lang:
+                            all_langs2check.append(_tmp_lang)
+                    # else: we don't need a warning: best effort approach
+
+            _url_parsed = urlparse.urlparse(_url, allow_fragments=False)
+            _url_variables = urlparse.parse_qs(_url_parsed.query)
+
+            for _check in all_langs2check:
+                #if f"lang={_check}" in _url or f"language={_check}" in _url:
+                for k, v in _url_variables.items():
+                    if v == _check:
+                        importance2lang[_importance_hierarchy[0]].append(lang2check)
+
+                if subdomain and subdomain == _check:
+                    importance2lang[_importance_hierarchy[1]].append(lang2check)
+
+                if f"/{_check}/" in _url or _url.endswith(f"/{_check}"):
+                    importance2lang[_importance_hierarchy[2]].append(lang2check)
+
+                if public_suffix and public_suffix == _check:
+                    importance2lang[_importance_hierarchy[3]].append(lang2check)
 
         # Check if any language was detected
         for importance in sorted(importance2lang.keys()):
@@ -309,7 +316,5 @@ if __name__ == "__main__":
     utils.set_up_logging(level=logging.DEBUG if args.verbose else logging.INFO)
 
     logging.debug("Arguments processed: {}".format(str(args)))
-
-    global_preprocessing()
 
     main(args)
