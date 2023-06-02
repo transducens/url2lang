@@ -20,38 +20,7 @@ from tldextract import extract
 # Disable (less verbose) 3rd party logging
 logging.getLogger("filelock").setLevel(logging.WARNING)
 
-def store_negative_samples(parallel_urls, non_parallel_filename, target_domains, unary_generator, logging_cte=2):
-    no_parallel_domains = len(target_domains)
-    no_non_parallel_urls = 0
-    no_non_parallel_domains = 0
-    last_perc_shown = -1
-
-    with open(non_parallel_filename, 'w') as f:
-        for idx, domain in enumerate(target_domains):
-            parallel_urls_domain = list(parallel_urls[domain]) # WARNING: you will need to set PYTHONHASHSEED if you want deterministic results across different executions
-            negative_samples = unary_generator(parallel_urls_domain)
-
-            for src_url, trg_url in negative_samples:
-                f.write(f"{src_url}\t{trg_url}\n")
-
-            _finished_perc = (idx + 1) * 100.0 / no_parallel_domains
-            finished_perc = int(_finished_perc)
-
-            # Update statistics
-            no_non_parallel_domains += 1 if len(negative_samples) != 0 else 0
-            no_non_parallel_urls += len(negative_samples)
-
-            # Show every logging_cte %
-            if finished_perc % logging_cte == 0 and finished_perc != last_perc_shown:
-                logging.info("%.2f %% of negative samples generated (%d out of %d domains were already processed): %d negative samples",
-                             _finished_perc, idx + 1, no_parallel_domains, no_non_parallel_urls)
-
-                last_perc_shown = finished_perc
-
-    return no_non_parallel_urls, no_non_parallel_domains
-
-def store_dataset(parallel_urls, target_domains, parallel_filename, non_parallel_filename, logging_cte=2,
-                  process_even_if_files_exist=False):
+def store_dataset(parallel_urls, target_domains, parallel_filename, logging_cte=2, process_even_if_files_exist=False):
     no_parallel_urls = 0
     no_parallel_domains = len(target_domains)
     last_perc_shown = -1
@@ -59,13 +28,13 @@ def store_dataset(parallel_urls, target_domains, parallel_filename, non_parallel
     positive_samples_cm = open(parallel_filename, 'w') if write_positive_samples else contextlib.nullcontext()
 
     if not write_positive_samples:
-        logging.warning("Positive samples will not be generated since already exist, but statistics will be displayed: %s", parallel_filename)
+        logging.warning("Samples will not be generated since already exist, but statistics will be displayed: %s", parallel_filename)
 
     # Store parallel URLs
     with positive_samples_cm as f:
         for idx, domain in enumerate(target_domains):
-            for url1, url2 in parallel_urls[domain]:
-                f.write(f"{url1}\t{url2}\n")
+            for url, lang in parallel_urls[domain]:
+                f.write(f"{url}\t{lang}\n")
 
                 no_parallel_urls += 1
 
@@ -74,19 +43,18 @@ def store_dataset(parallel_urls, target_domains, parallel_filename, non_parallel
 
             # Show every logging_cte %
             if finished_perc % logging_cte == 0 and finished_perc != last_perc_shown:
-                logging.info("%.2f %% of positive samples generated (%d out of %d domains were already processed): %d positive samples",
+                logging.info("%.2f %% of positive samples generated (%d out of %d domains were already processed): %d samples",
                              _finished_perc, idx + 1, no_parallel_domains, no_parallel_urls)
 
                 last_perc_shown = finished_perc
 
-    logging.info("Total URLs (positive samples): stored in '%s': %d", parallel_filename, no_parallel_urls)
-    logging.info("Total domains (positive samples): %d", no_parallel_domains)
+    logging.info("Total URLs: stored in '%s': %d", parallel_filename, no_parallel_urls)
+    logging.info("Total domains: %d", no_parallel_domains)
 
 def main(args):
-    input_file_parallel_urls = args.input_file_parallel_urls
+    input_file_data = args.input_file_data
     output_file_urls_prefix = args.output_files_prefix
     seed = args.seed
-    check_same = args.check_same
     sets_absolute_instead_of_relative = args.sets_absolute_instead_of_relative
     sets_percentage = args.sets_percentage
     process_even_if_files_exist = args.process_even_if_files_exist
@@ -112,7 +80,7 @@ def main(args):
     skipped_urls = 0
     no_parallel_urls = 0
 
-    for idx, url_pair in enumerate(input_file_parallel_urls, 1):
+    for idx, url_pair in enumerate(input_file_data, 1):
         url_pair = url_pair.strip().split('\t')
 
         if len(url_pair) != 2:
@@ -123,42 +91,15 @@ def main(args):
             skipped_urls += 1
 
             continue
-        if len(url_pair[0]) > 1000 or len(url_pair[1]) > 1000:
-            logging.warning("Skipping line #%d because there are URLs too long (%d and %d)", idx, len(url_pair[0]), len(url_pair[1]))
+        if len(url_pair[0]) > 2000:
+            logging.warning("Skipping line #%d because there are URLs too long: %d", idx, len(url_pair[0]))
             skipped_urls += 1
 
             continue
 
-        url_pair = preprocess.preprocess_url(url_pair, separator='/', remove_protocol=False, tokenization=False)
+        url_pair[0] = preprocess.preprocess_url(url_pair[0], separator='/', remove_protocol=False, tokenization=False)
         src_subdomain, src_domain, src_tld = extract(url_pair[0])
-        trg_subdomain, trg_domain, trg_tld = extract(url_pair[1])
-        domains = (src_domain, trg_domain) # We are grouping by domain
-        src_check, trg_check = '', ''
-
-        if check_same == "authority":
-            src_check = f"{src_subdomain}.{src_domain}.{src_tld}"
-            trg_check = f"{trg_subdomain}.{trg_domain}.{trg_tld}"
-        elif check_same == "subdomain":
-            src_check = src_subdomain
-            trg_check = trg_subdomain
-        elif check_same == "domain":
-            src_check = src_domain
-            trg_check = trg_domain
-        elif check_same == "tld":
-            src_check = src_tld
-            trg_check = trg_tld
-        elif check_same == "none":
-            pass
-        else:
-            raise Exception(f"Unknown 'check_same' option: {check_same}")
-
-        if src_check != trg_check:
-            logging.debug("Skipping line #%d because the URLs didn't pass the check (%s vs %s)", idx, src_check, trg_check)
-            skipped_urls += 1
-
-            continue
-
-        domain = f"{domains[0]}\t{domains[1]}"
+        domain = src_domain
 
         if domain not in parallel_urls:
             parallel_urls[domain] = set()
@@ -175,8 +116,8 @@ def main(args):
     logging.info("Skipped lines: %d out of %d (%.2f %%) due to checks; %d out of %d (%.2f %%) due to duplicates",
                  skipped_urls, total_read_urls, skipped_urls * 100.0 / total_read_urls,
                  no_parallel_urls, total_read_urls, no_parallel_urls * 100.0 / total_read_urls)
-    logging.info("Loaded URLs (positive samples): %d", no_parallel_urls)
-    logging.info("Total domains (positive samples): %d", len_domains)
+    logging.info("Loaded URLs: %d", no_parallel_urls)
+    logging.info("Total domains: %d", len_domains)
 
     if sets_absolute_instead_of_relative:
         if sets_quantities_with_minus_one == 1:
@@ -240,28 +181,24 @@ def main(args):
         raise Exception("Not all the domains have been set to a set")
 
     # Generate positive and negative samples for train, dev and test sets
-    store_dataset(parallel_urls, train_domains,
-                  f"{output_file_urls_prefix}.parallel.train", f"{output_file_urls_prefix}.non-parallel.train",
+    store_dataset(parallel_urls, train_domains, f"{output_file_urls_prefix}.train",
                   logging_cte=5, process_even_if_files_exist=process_even_if_files_exist)
-    store_dataset(parallel_urls, dev_domains,
-                  f"{output_file_urls_prefix}.parallel.dev", f"{output_file_urls_prefix}.non-parallel.dev",
+    store_dataset(parallel_urls, dev_domains, f"{output_file_urls_prefix}.dev",
                   logging_cte=10, process_even_if_files_exist=process_even_if_files_exist)
-    store_dataset(parallel_urls, test_domains,
-                  f"{output_file_urls_prefix}.parallel.test", f"{output_file_urls_prefix}.non-parallel.test",
+    store_dataset(parallel_urls, test_domains, f"{output_file_urls_prefix}.test",
                   logging_cte=10, process_even_if_files_exist=process_even_if_files_exist)
 
     logging.info("Done!")
 
 def initialization():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                     description="Create URLs dataset from parallel samples")
+                                     description="Create dataset from samples")
 
     sets_absolute_instead_of_relative = "--sets-absolute-instead-of-relative" in sys.argv[1:]
 
-    parser.add_argument('input_file_parallel_urls', type=argparse.FileType('rt', errors="backslashreplace"), help="Input TSV file with parallel URLs")
+    parser.add_argument('input_file_data', type=argparse.FileType('rt', errors="backslashreplace"), help="Input TSV file with URLs and their langs")
     parser.add_argument('output_files_prefix', help="Output files prefix")
 
-    parser.add_argument('--check-same', choices=["none", "authority", "subdomain", "domain", "tld"], default="domain", help="Skip pair of URLs according to the specified configuration")
     parser.add_argument('--sets-percentage', type=int if sets_absolute_instead_of_relative else float, nargs=3, default=None if sets_absolute_instead_of_relative else [0.8, 0.1, 0.1],
                         required=sets_absolute_instead_of_relative,
                         help="Train, dev and test percentages (by default, relative percentages, but if --sets-absolute-instead-of-relative is set, absolute quantities are expected)")
