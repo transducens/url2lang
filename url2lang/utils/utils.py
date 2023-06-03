@@ -10,8 +10,6 @@ import argparse
 
 import torch
 
-import url2lang.url2lang as url2lang
-
 logger = logging.getLogger("url2lang")
 
 def wc_l(fd, do_not_count_empty=True):
@@ -79,6 +77,8 @@ def apply_model(model, tokenizer, tokens, encode=False):
 #  Pro using lang+url in input: we can apply 0 shot learning
 def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return_urls=False,
                                  auxiliary_tasks=[], inference=False):
+    import url2lang.url2lang as url2lang
+
     def reset():
         urls = {
             "urls": [],

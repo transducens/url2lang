@@ -97,7 +97,7 @@ def main(args):
 
             continue
 
-        url_pair[0] = preprocess.preprocess_url(url_pair[0], separator='/', remove_protocol=False, tokenization=False)
+        url_pair[0] = preprocess.preprocess_url(url_pair[0], separator='/', remove_protocol=False, tokenization=False)[0]
         src_subdomain, src_domain, src_tld = extract(url_pair[0])
         domain = src_domain
 
