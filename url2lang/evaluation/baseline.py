@@ -95,7 +95,7 @@ def get_gs(file):
 
     return gs, url2lang, lang2url
 
-_importance_hierarchy = [1, 2, 3, 4]    # variables, subdomain, directory and public suffix
+_importance_hierarchy = [1, 3, 2, 4]    # variables, subdomain, directory and public suffix
                                         # Research purposes: which order is the best? Set using U2L_IMPORTANCE_HIERARCHY envvar
 def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=True,
              print_negative_matches=False, print_score=False):

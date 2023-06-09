@@ -25,7 +25,7 @@ _langs_to_detect_alpha_3 = url2lang._langs_to_detect_alpha_3
 _unknown_lang_label = url2lang._unknown_lang_label
 _langs_to_detect = [_unknown_lang_label]
 
-_3_letter_to_2_letter = True # Look for 2-letter code in URLs
+_3_letter_to_2_letter = False # Look for 2-letter code in URLs
 _3_letter_to_2_letter_force = False # Do not add other thing which is not 2-letter code
 
 def global_preprocessing():
