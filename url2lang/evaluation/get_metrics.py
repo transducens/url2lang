@@ -180,33 +180,38 @@ def main(args):
     logging.info("Using GS in order to get some evaluation metrics. Languages to process: %s", str(seen_langs))
 
     # Log metrics
-    confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=_langs_to_detect)
+    labels = sorted(list(set(y_true)))
+    labels_conf_mat = _langs_to_detect
+    confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=labels_conf_mat)
 
     #logging.info("GS: confusion matrix: %s", list(confusion_matrix))
 
-    precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, average=None)
-    recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, average=None)
-    f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=_langs_to_detect, average=None)
+    precision = sklearn.metrics.precision_score(y_true, y_pred, labels=labels, average=None)
+    recall = sklearn.metrics.recall_score(y_true, y_pred, labels=labels, average=None)
+    f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=labels, average=None)
 
-    for idx, lang in enumerate(_langs_to_detect):
-        if lang not in seen_langs:
+    for idx, lang in enumerate(labels):
+        if lang not in _langs_to_detect:
+            logging.warning("Couldn't process lang %s: is not in the list of available langs", lang)
+
             continue
 
-        incorrect = sum(list(confusion_matrix[idx])) - confusion_matrix[idx][idx]
+        conf_mat_idx = labels_conf_mat.index(lang)
+        incorrect = sum(list(confusion_matrix[conf_mat_idx])) - confusion_matrix[conf_mat_idx][conf_mat_idx]
 
-        logging.info("GS: lang %s: confusion matrix row: [%s] (ok: %d; nok: %d)", lang, ", ".join([f"{_lang}: {cm}" for _lang, cm in zip(_langs_to_detect, list(confusion_matrix[idx]))]), confusion_matrix[idx][idx], incorrect)
+        logging.info("GS: lang %s: confusion matrix row: [%s] (ok: %d; nok: %d)", lang, ", ".join([f"{_lang}: {cm}" for _lang, cm in zip(labels_conf_mat, list(confusion_matrix[conf_mat_idx]))]), confusion_matrix[conf_mat_idx][conf_mat_idx], incorrect)
         logging.info("GS: lang %s: precision: %s", lang, precision[idx])
         logging.info("GS: lang %s: recall: %s", lang, recall[idx])
         logging.info("GS: lang %s: F1: %s", lang, f1[idx])
 
     for average in ("micro", "macro"):
-        precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, average=average)
-        recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, average=average)
-        f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=_langs_to_detect, average=average)
+        precision = sklearn.metrics.precision_score(y_true, y_pred, labels=labels, average=average)
+        recall = sklearn.metrics.recall_score(y_true, y_pred, labels=labels, average=average)
+        f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=labels, average=average)
 
-        logging.info("GS: %s precision: %s", average, precision)
-        logging.info("GS: %s recall: %s", average, recall)
-        logging.info("GS: %s F1: %s", average, f1)
+        logging.info("GS: %s precision (%d classes): %s", average, len(labels), precision)
+        logging.info("GS: %s recall (%d classes): %s", average, len(labels), recall)
+        logging.info("GS: %s F1 (%d classes): %s", average, len(labels), f1)
 
     mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
     acc = sklearn.metrics.accuracy_score(y_true, y_pred)
