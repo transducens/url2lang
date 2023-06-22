@@ -197,9 +197,13 @@ def main(args):
             continue
 
         conf_mat_idx = labels_conf_mat.index(lang)
-        incorrect = sum(list(confusion_matrix[conf_mat_idx])) - confusion_matrix[conf_mat_idx][conf_mat_idx]
+        tp = confusion_matrix[conf_mat_idx][conf_mat_idx]
+        fn = sum(list(confusion_matrix[conf_mat_idx])) - tp
+        fp = sum(list([confusion_matrix[i][conf_mat_idx] for i in range(len(confusion_matrix))])) - tp
+        tn = confusion_matrix.sum() - fn - fp - tp
 
-        logging.info("GS: lang %s: confusion matrix row: [%s] (ok: %d; nok: %d)", lang, ", ".join([f"{_lang}: {cm}" for _lang, cm in zip(labels_conf_mat, list(confusion_matrix[conf_mat_idx]))]), confusion_matrix[conf_mat_idx][conf_mat_idx], incorrect)
+        logging.info("GS: lang %s: confusion matrix row: [%s]", lang, ", ".join([f"{_lang}: {cm}" for _lang, cm in zip(labels_conf_mat, list(confusion_matrix[conf_mat_idx]))]))
+        logging.info("GS: lang %s: TP, FP, TN, FN: %d %d %d %d", lang, tp, fp, tn, fn)
         logging.info("GS: lang %s: precision: %s", lang, precision[idx])
         logging.info("GS: lang %s: recall: %s", lang, recall[idx])
         logging.info("GS: lang %s: F1: %s", lang, f1[idx])
