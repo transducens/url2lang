@@ -329,7 +329,7 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
 
 @torch.no_grad()
 def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager,
-                              src_urls, src_urls_lang, remove_authority=False, remove_positional_data_from_resource=False,
+                              src_urls, remove_authority=False, remove_positional_data_from_resource=False,
                               parallel_likelihood=False, threshold=-np.inf, url_separator=' ', lower=False,
                               auxiliary_tasks=[], auxiliary_tasks_flags=[]):
     model.eval()
@@ -346,12 +346,8 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
     for task in all_tasks:
         all_results[task] = []
 
-    if len(src_urls_lang) != len(src_urls):
-        raise Exception(f"Unexpected different lengths: {len(src_urls_lang)} vs {len(src_urls)}")
-
     # Process URLs
     src_urls = [src_url.replace('\t', ' ') for src_url in src_urls]
-    str_urls = [f"{src_url}" for src_url, trg_url in zip(src_urls, src_urls_lang)]
 
     urls_generator = utils.tokenize_batch_from_iterator(str_urls, tokenizer, batch_size,
                             f=lambda u: preprocess.preprocess_url(u, remove_protocol_and_authority=remove_authority,
