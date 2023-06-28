@@ -349,7 +349,7 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
     # Process URLs
     src_urls = [src_url.replace('\t', ' ') for src_url in src_urls]
 
-    urls_generator = utils.tokenize_batch_from_iterator(str_urls, tokenizer, batch_size,
+    urls_generator = utils.tokenize_batch_from_iterator(src_urls, tokenizer, batch_size,
                             f=lambda u: preprocess.preprocess_url(u, remove_protocol_and_authority=remove_authority,
                                                                   remove_positional_data=remove_positional_data_from_resource,
                                                                   separator=url_separator, lower=lower),
