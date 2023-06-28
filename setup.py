@@ -66,6 +66,7 @@ if __name__ == "__main__":
         entry_points={
             "console_scripts": [
                 "url2lang = url2lang.cli:main",
+                "url2lang-server = url2lang.cli:flask_server",
             ]
         },
         cmdclass={

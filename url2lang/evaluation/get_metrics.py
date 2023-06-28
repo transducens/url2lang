@@ -197,6 +197,7 @@ def main(args):
             continue
 
         conf_mat_idx = labels_conf_mat.index(lang)
+        # Multiclass TP, FN, FP and TN (https://www.analyticsvidhya.com/blog/2021/06/confusion-matrix-for-multi-class-classification/)
         tp = confusion_matrix[conf_mat_idx][conf_mat_idx]
         fn = sum(list(confusion_matrix[conf_mat_idx])) - tp
         fp = sum(list([confusion_matrix[i][conf_mat_idx] for i in range(len(confusion_matrix))])) - tp
