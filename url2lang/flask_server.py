@@ -85,7 +85,7 @@ def inference():
             return jsonify({"ok": "null", "err": "error decoding BASE64 URLs"})
 
     for idx, url in enumerate(urls, 1):
-        logger.debug("'URL #%d: %s", idx, url)
+        logger.debug("URL #%d: %s", idx, url)
 
     # Inference
 
