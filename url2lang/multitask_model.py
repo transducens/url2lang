@@ -46,8 +46,11 @@ class MultitaskModel(nn.Module):
         self.task_models_dict = task_models_dict
         self.task_models_dict_modules = nn.ModuleDict(task_models_dict)
 
-    def load_model(self, model_input):
-        checkpoint = torch.load(model_input)
+    def load_model(self, model_input, device=None):
+        if device:
+            checkpoint = torch.load(model_input, map_location=device)
+        else:
+            checkpoint = torch.load(model_input)
 
         self.get_base_model().load_state_dict(checkpoint["encoder"])
         self.task_models_dict_modules.load_state_dict(checkpoint["tasks"])

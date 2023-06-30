@@ -197,7 +197,7 @@ def load_model(tasks, tasks_kwargs, model_input="", pretrained_model="", device=
     if model_input:
         logger.info("Loading model: '%s'", model_input)
 
-        multitask_model = multitask_model.load_model(model_input)
+        multitask_model = multitask_model.load_model(model_input, device=device)
 
     # Move model to device
     if device:

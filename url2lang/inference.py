@@ -77,6 +77,7 @@ def inference_with_heads(model, tasks, tokenizer, inputs_and_outputs, amp_contex
                     #outputs = torch.sigmoid(outputs).squeeze(1)
                     outputs = outputs.squeeze(1)
                     # TODO use threshold instead of torch.round
+                    # TODO sigmoid?
                     outputs_classification = torch.round(torch.sigmoid(outputs)).type(torch.int64).cpu() # Workaround for https://github.com/pytorch/pytorch/issues/54774
                 else:
                     # Binary classification
@@ -213,7 +214,7 @@ def inference(model, block_size, batch_size, tasks, tokenizer, criteria, dataset
 def interactive_inference(model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager,
                           inference_from_stdin=False, remove_authority=False, remove_positional_data_from_resource=False,
                           parallel_likelihood=False, threshold=-np.inf, url_separator=' ', lower=True,
-                          auxiliary_tasks=[], auxiliary_tasks_flags=[]):
+                          auxiliary_tasks=[], auxiliary_tasks_flags=[], specific_lang=True):
     logger.info("Inference mode enabled")
 
     for aux_task in auxiliary_tasks:
@@ -221,6 +222,10 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
             pass
         else:
             raise Exception(f"Not supported or unknown task: {aux_task}")
+
+    if specific_lang:
+        if not parallel_likelihood:
+            logger.warning("Specific languages have been set but parallel_likelihood is not set: results won't be able to be understood")
 
     if not inference_from_stdin:
         logger.info("Insert blank lines in order to end")
@@ -240,15 +245,21 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
                             f=lambda u: preprocess.preprocess_url(u, remove_protocol_and_authority=remove_authority,
                                                                   remove_positional_data=remove_positional_data_from_resource,
                                                                   separator=url_separator, lower=lower),
-                            return_urls=True, auxiliary_tasks=auxiliary_tasks, inference=True))
+                            return_urls=True, auxiliary_tasks=auxiliary_tasks, inference=True, specific_lang=specific_lang))
 
             except StopIteration:
                 break
 
             initial_src_urls = [u[0] for u in initial_urls]
+
+            if specific_lang:
+                target_langs = [u[1] for u in initial_urls]
         else:
             initial_src_urls = [input("url: ").strip()]
             #src_url_lang = input("url lang: ").strip()
+
+            if specific_lang:
+                target_langs = [input("lang: ").strip()]
 
             if not initial_src_urls[0]:
                 break
@@ -295,20 +306,22 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
         # Get results of each task
         for task in all_tasks:
             outputs = results[task]["outputs"].cpu()
-            outputs_argmax = results[task]["outputs_classification"]
+            outputs_argmax = results[task]["outputs_classification"].numpy()
 
             if task in ("language-identification",):
-                outputs = torch.sigmoid(outputs)
+                outputs = torch.softmax(outputs, dim=1)
 
-            #if len(outputs_argmax.shape) == 0:
-            #    outputs_argmax = np.array([outputs_argmax])
+            outputs = outputs.numpy()
 
-            if outputs.numpy().shape[0] != len(initial_src_urls):
+            if specific_lang:
+                outputs_argmax = np.array([url2lang._lang2id[lang] for lang in target_langs])
+
+            if outputs.shape[0] != len(initial_src_urls):
                 raise Exception("Output samples does not match with the length of src URLs "
-                                f"({outputs.numpy().shape[0]} vs {len(initial_src_urls)})")
+                                f"({outputs.shape[0]} vs {len(initial_src_urls)})")
 
             if parallel_likelihood:
-                for argmax, data, initial_src_url in zip(outputs_argmax.numpy(), outputs.numpy(), initial_src_urls):
+                for argmax, data, initial_src_url in zip(outputs_argmax, outputs, initial_src_urls):
                     if task in ("language-identification",):
                         regression = results[task]["regression"]
                         likelihood = data if regression else data[argmax]
@@ -319,7 +332,7 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
                     else:
                         print(f"{task}\t{data}\t{initial_src_url}")
             else:
-                for argmax, initial_src_url in zip(outputs_argmax.numpy(), initial_src_urls):
+                for argmax, initial_src_url in zip(outputs_argmax, initial_src_urls):
                     if task in ("language-identification",):
                         lang = url2lang._id2lang[argmax]
 
@@ -331,7 +344,7 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
 def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager,
                               src_urls, remove_authority=False, remove_positional_data_from_resource=False,
                               parallel_likelihood=False, threshold=-np.inf, url_separator=' ', lower=False,
-                              auxiliary_tasks=[], auxiliary_tasks_flags=[]):
+                              auxiliary_tasks=[], auxiliary_tasks_flags=[], target_langs=[]):
     model.eval()
     all_results = {}
 
@@ -342,12 +355,20 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
             raise Exception(f"Not supported or unknown task: {aux_task}")
 
     all_tasks = ["language-identification"] + auxiliary_tasks
+    specific_lang = len(target_langs) != 0
 
     for task in all_tasks:
         all_results[task] = []
 
     # Process URLs
     src_urls = [src_url.replace('\t', ' ') for src_url in src_urls]
+
+    if specific_lang:
+        if len(target_langs) != len(src_urls):
+            raise Exception(f"Unexpected different lengths: {len(target_langs)} vs {len(src_urls)}")
+
+        if not parallel_likelihood:
+            logger.warning("Specific languages have been set but parallel_likelihood is not set: results won't be able to be understood")
 
     urls_generator = utils.tokenize_batch_from_iterator(src_urls, tokenizer, batch_size,
                             f=lambda u: preprocess.preprocess_url(u, remove_protocol_and_authority=remove_authority,
@@ -369,19 +390,22 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
 
         # Get results
         for task in all_tasks:
-            outputs = torch.sigmoid(results[task]["outputs"]).cpu()
-            outputs_argmax = results[task]["outputs_classification"]
+            outputs = torch.softmax(results[task]["outputs"], dim=1).cpu().numpy().numpy()
+            outputs_argmax = results[task]["outputs_classification"].numpy()
             regression = results[task]["regression"]
 
-            if outputs.numpy().shape[0] != len(src_urls):
+            if outputs.shape[0] != len(src_urls):
                 raise Exception("Output samples does not match with the length of src URLs: "
-                                f"{outputs.numpy().shape[0]} vs {len(src_urls)}")
+                                f"{outputs.shape[0]} vs {len(src_urls)}")
+
+            if specific_lang:
+                outputs_argmax = np.array([url2lang._lang2id[lang] for lang in target_langs])
 
             if parallel_likelihood:
-                _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax.numpy(), outputs.numpy())]
-                _results = [f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax.numpy(), _results) if likelihood >= threshold]
+                _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax, outputs)]
+                _results = [f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
             else:
-                _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax.numpy()]
+                _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax]
 
             all_results[task].extend(_results)
 

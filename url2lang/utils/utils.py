@@ -76,7 +76,7 @@ def apply_model(model, tokenizer, tokens, encode=False):
 # TODO take into account --regression flag in order to add the language to the input model
 #  Pro using lang+url in input: we can apply 0 shot learning
 def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return_urls=False,
-                                 auxiliary_tasks=[], inference=False):
+                                 auxiliary_tasks=[], inference=False, specific_lang=False):
     import url2lang.url2lang as url2lang
 
     def reset():
@@ -90,6 +90,9 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
 
     urls, initial_urls = reset()
 
+    if specific_lang and not inference:
+        raise Exception("specific_lang is only supported for inference")
+
     for idx, url in enumerate(iterator, 1):
         url = url.strip().split('\t')
         initial_url = url[0]
@@ -97,8 +100,11 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
         if inference:
             # Format:
             #  2: url true_lang[ignored]
-            if len(url) not in (1, 2):
-                raise Exception(f"Expected lengths are 1 or 2 but got {len(url)}")
+            #  3: url result_lang true_lang[ignored]
+            if len(url) not in (1, 2, 3):
+                raise Exception(f"Expected lengths are 1, 2 or 3 but got {len(url)}")
+            if specific_lang and len(url) != 3:
+                raise Exception(f"Expected lengths is 3 but got {len(url)}: specific_lang is set")
         else:
             if len(url) != 2:
                 raise Exception(f"It was expected 2 values per line (url, true_lang), but got {len(url)} values")
@@ -117,7 +123,7 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
         if inference and len(url) in (1,):
             target_output = -1 # We don't know the result since inference=True
         else:
-            true_lang = url[1]
+            true_lang = url[1 if len(url) == 2 else 2]
 
             if true_lang in url2lang._lang2id.keys():
                 target_output = url2lang._lang2id[true_lang]
@@ -126,12 +132,20 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
 
                 continue
 
+            if specific_lang:
+                result_lang = url[1]
+
+                if true_lang not in url2lang._lang2id.keys():
+                    logger.warning("URL skipped since the expected language (%s) is not supported: %s", result_lang, initial_url)
+
+                    continue
+
         if tokenizer.sep_token in src_url:
             logger.warning("URL skipped since they contain the separator token: %s", initial_url)
 
             continue
 
-        initial_urls.append([initial_url])
+        initial_urls.append([initial_url] + [result_lang] if specific_lang else [])
         urls["urls"].append(f"{src_url}")
         urls["labels_task_language_identification"].append(target_output)
 
