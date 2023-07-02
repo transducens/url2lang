@@ -403,7 +403,7 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
 
             if parallel_likelihood:
                 _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax, outputs)]
-                _results = [f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
+                _results = [likelihood if specific_lang else f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
             else:
                 _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax]
 
