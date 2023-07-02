@@ -130,6 +130,10 @@ def batch_prediction(urls):
     target_task = global_conf["target_task"]
     target_lang = global_conf["target_lang"]
 
+    if target_lang:
+        if not isinstance(target_lang, list):
+            target_lang = [target_lang] * len(urls)
+
     # Inference
     results = u2l_inference.non_interactive_inference(
         model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager, urls,
@@ -160,8 +164,6 @@ def main(args):
 
     if target_lang is None:
         target_lang = []
-    else:
-        target_lang = [target_lang]
 
     if not disable_streamer:
         logger.warning("Since streamer is enabled, you might get slightly different results: not recommended for production")
