@@ -390,7 +390,7 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
 
         # Get results
         for task in all_tasks:
-            outputs = torch.softmax(results[task]["outputs"], dim=1).cpu().numpy().numpy()
+            outputs = torch.softmax(results[task]["outputs"], dim=1).cpu().numpy()
             outputs_argmax = results[task]["outputs_classification"].numpy()
             regression = results[task]["regression"]
 
