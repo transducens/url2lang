@@ -128,13 +128,14 @@ def batch_prediction(urls):
     lower = global_conf["lower"]
     auxiliary_tasks = global_conf["auxiliary_tasks"]
     target_task = global_conf["target_task"]
+    target_lang = global_conf["target_lang"]
 
     # Inference
     results = u2l_inference.non_interactive_inference(
         model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager, urls,
         remove_authority=remove_authority, remove_positional_data_from_resource=remove_positional_data_from_resource,
         parallel_likelihood=parallel_likelihood, url_separator=url_separator, lower=lower,
-        auxiliary_tasks=auxiliary_tasks,
+        auxiliary_tasks=auxiliary_tasks, target_langs=target_lang,
     )
 
     return results[target_task] # TODO do we need a list if the streamer is used (it seems so)?
@@ -154,10 +155,20 @@ def main(args):
     streamer_max_latency = args.streamer_max_latency
     run_flask_server = not args.do_not_run_flask_server
     disable_streamer = args.disable_streamer
+    target_lang = args.target_lang
+    parallel_likelihood = args.parallel_likelihood
+
+    if target_lang is None:
+        target_lang = []
+    else:
+        target_lang = [target_lang]
 
     if not disable_streamer:
         logger.warning("Since streamer is enabled, you might get slightly different results: not recommended for production")
         # Related to https://discuss.pytorch.org/t/slightly-different-results-in-same-machine-and-gpu-but-different-order/173581
+
+    if target_lang and not parallel_likelihood:
+        raise Exception("If --target-lang is set, --parallel-likelihood has to be as well")
 
     if auxiliary_tasks is None:
         auxiliary_tasks = []
@@ -181,7 +192,7 @@ def main(args):
     global_conf["amp_context_manager"], _, _ = u2l.get_amp_context_manager(args.cuda_amp, use_cuda)
     global_conf["remove_authority"] = args.remove_authority
     global_conf["remove_positional_data_from_resource"] = args.remove_positional_data_from_resource
-    global_conf["parallel_likelihood"] = args.parallel_likelihood
+    global_conf["parallel_likelihood"] = parallel_likelihood
     global_conf["url_separator"] = args.url_separator
     global_conf["streamer"] = ThreadedStreamer(batch_prediction, batch_size=args.batch_size, max_latency=streamer_max_latency)
     global_conf["disable_streamer"] = disable_streamer
@@ -189,6 +200,7 @@ def main(args):
     global_conf["lower"] = lower
     global_conf["auxiliary_tasks"] = auxiliary_tasks
     global_conf["target_task"] = target_task
+    global_conf["target_lang"] = target_lang
 
     # Some guidance
     logger.info("Example: curl http://127.0.0.1:%d/hello-world", flask_port)
@@ -225,6 +237,7 @@ def initialization():
     parser.add_argument('--regression', action="store_true", help="Apply regression instead of binary classification")
     parser.add_argument('--streamer-max-latency', type=float, default=0.1,
                         help="Streamer max latency. You will need to modify this parameter if you want to increase the GPU usage")
+    parser.add_argument('--target-lang', type=str, help="Target lang")
     parser.add_argument('--do-not-run-flask-server', action="store_true", help="Do not run app.run")
 
     parser.add_argument('-v', '--verbose', action="store_true", help="Verbose logging mode")
