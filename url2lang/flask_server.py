@@ -16,6 +16,7 @@ from flask import (
     jsonify,
 )
 from service_streamer import ThreadedStreamer
+import pycountry
 
 app = Flask("url2lang-flask-server")
 
@@ -61,6 +62,23 @@ def inference():
 
         return jsonify({"ok": "null", "err": f"could not get some mandatory field: 'urls' are mandatory"})
 
+    # Optional parameters
+    try:
+        if request.method == "GET":
+            # GET method should be used only for testing purposes since HTML encoding is not being handled
+            langs = request.args.getlist("langs")
+        elif request.method == "POST":
+            langs = request.form.getlist("langs")
+        else:
+            logger.warning("Unknown method: %s", request.method)
+
+            return jsonify({"ok": "null", "err": f"unknown method: {request.method}"})
+
+        if len(langs) == 0:
+            langs = None
+    except KeyError as e:
+        langs = None
+
     if not urls:
         logger.warning("Empty urls: %s", urls)
 
@@ -71,6 +89,13 @@ def inference():
 
         if not isinstance(urls, list):
             urls = [urls]
+
+    if langs:
+        if not isinstance(langs, list):
+            langs = [langs]
+
+        if len(urls) != len(langs):
+            return jsonify({"ok": "null", "err": f"different urls and langs length: {len(urls)} vs {len(langs)}"})
 
     logger.debug("Got %d URLs", len(urls))
 
@@ -91,6 +116,10 @@ def inference():
 
     disable_streamer = global_conf["disable_streamer"]
     get_results = global_conf["streamer"].predict if not disable_streamer else batch_prediction
+
+    if langs:
+        urls = [f"{url}\t{lang}" for url, lang in zip(urls, langs)]
+
     results = get_results(urls)
 
     # Return results
@@ -129,17 +158,43 @@ def batch_prediction(urls):
     auxiliary_tasks = global_conf["auxiliary_tasks"]
     target_task = global_conf["target_task"]
     target_lang = global_conf["target_lang"]
+    target_urls = []
+    target_langs = []
+
+    for url in urls:
+        fields = url.split('\t')
+
+        target_urls.append(fields[0])
+
+        if len(fields) >= 2:
+            lang = fields[1]
+
+            if len(lang) == 2:
+                # url2lang works with iso 639-2, not 639-1
+                _lang = pycountry.languages.get(alpha_2=lang)
+
+                if _lang and "alpha_3" in dir(_lang):
+                    lang = _lang.alpha_3
+
+            target_langs.append(lang)
+
+            if target_lang:
+                logger.warning("Provided lang through API is going to be replaced becuase --target-lang is set: %s -> %s",
+                               target_langs[-1], target_lang)
+            else:
+                if not parallel_likelihood:
+                    logger.warning("Langs have been provided, but --parallel-likelihood is not set")
 
     if target_lang:
         if not isinstance(target_lang, list):
-            target_lang = [target_lang] * len(urls)
+            target_langs = [target_lang] * len(urls)
 
     # Inference
     results = u2l_inference.non_interactive_inference(
-        model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager, urls,
+        model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager, target_urls,
         remove_authority=remove_authority, remove_positional_data_from_resource=remove_positional_data_from_resource,
         parallel_likelihood=parallel_likelihood, url_separator=url_separator, lower=lower,
-        auxiliary_tasks=auxiliary_tasks, target_langs=target_lang,
+        auxiliary_tasks=auxiliary_tasks, target_langs=target_langs,
     )
 
     return results[target_task] # TODO do we need a list if the streamer is used (it seems so)?
@@ -206,7 +261,7 @@ def main(args):
 
     # Some guidance
     logger.info("Example: curl http://127.0.0.1:%d/hello-world", flask_port)
-    logger.debug("Example: curl http://127.0.0.1:%d/inference -X POST -d \"urls=https://domain/resource1\"", flask_port)
+    logger.debug("Example: curl http://127.0.0.1:%d/inference -X POST -d \"urls=https://domain/resource1\"&langs=eng", flask_port)
 
     if run_flask_server:
         # Run flask server
