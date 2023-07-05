@@ -109,9 +109,6 @@ def inference():
 
             return jsonify({"ok": "null", "err": "error decoding BASE64 URLs"})
 
-    for idx, url in enumerate(urls, 1):
-        logger.debug("URL #%d: %s", idx, url)
-
     # Inference
 
     disable_streamer = global_conf["disable_streamer"]
@@ -134,7 +131,13 @@ def inference():
 
     results = [str(r) for r in results]
 
-    logger.debug("Results: %s", results)
+    for idx, (url, result) in enumerate(zip(urls, results), 1):
+        lang = '-'
+
+        if langs:
+            url, lang = url.split('\t')
+
+        logger.debug("Results #%d: %s (lang: %s): %s", idx, url, lang, result)
 
     return jsonify({
         "ok": results,
