@@ -101,6 +101,10 @@ def main(args):
         src_subdomain, src_domain, src_tld = extract(url_pair[0])
         domain = src_domain
 
+        if not domain:
+            # e.g. http://test.tj
+            domain = src_tld
+
         if domain not in parallel_urls:
             parallel_urls[domain] = set()
 
@@ -108,7 +112,7 @@ def main(args):
         parallel_urls[domain].add((url_pair[0], url_pair[1]))
         _no_parallel_urls_after = len(parallel_urls[domain])
 
-        no_parallel_urls += 1 if _no_parallel_urls_before != _no_parallel_urls_after else 0
+        no_parallel_urls += 0 if _no_parallel_urls_before != _no_parallel_urls_after else 1
 
     len_domains = len(parallel_urls.keys())
     total_read_urls = idx
