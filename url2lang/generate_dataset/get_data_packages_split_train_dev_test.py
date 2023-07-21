@@ -112,15 +112,17 @@ for s, set_n_domains, total_packages in (("dev", dev_n_domains, 1), ("test", tes
             if domain in seen_domains:
                 continue
 
-            if added_domains[lang] >= max_domains_per_lang_per_package:
-                break
-
             c = False
 
             for lang in domain2lang2quantity[domain]:
                 # Check if we can process all the languages of the current domain
                 if quantity_urls[lang] + domain2lang2quantity[domain][lang] >= max_urls_per_lang_per_package:
                     # The domain would add more pairs than allowed per lang for the current lang
+                    c = True
+
+                    break
+
+                if added_domains[lang] >= max_domains_per_lang_per_package:
                     c = True
 
                     break
@@ -153,7 +155,7 @@ for s, set_n_domains, total_packages in (("dev", dev_n_domains, 1), ("test", tes
 
 # Are there domains which were not added? Add to dev test
 for remaining_domain in set.difference(set(all_domains), seen_domains):
-    for url, lang in domain2url_and_lang[domain]:
+    for url, lang in domain2url_and_lang[remaining_domain]:
         print(f"dev\t-1\t{url}\t{lang}") # package -1 in order to be able to identify this "extra" data
 
 logging.info("Done!")

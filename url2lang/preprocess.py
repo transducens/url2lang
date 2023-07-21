@@ -10,6 +10,12 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 logger = logging.getLogger("url2lang")
 
+def remove_blanks(url):
+    url = re.sub(r'\s+', ' ', url)
+    url = re.sub(r'^\s+|\s+$', '', url)
+
+    return url
+
 _stringify_url_replace_chars = ['.', '-', '_', '=', '?', '\n', '\r', '\t']
 def stringify_url(url, separator=' '):
     url = url.split('/')
@@ -17,14 +23,13 @@ def stringify_url(url, separator=' '):
     #url = [' '.join([s for s in u.split(' ') if s != '']) for u in url] # Remove multiple ' '
     url = separator.join(url)
     # Remove blanks
-    url = re.sub(r'\s+', ' ', url)
-    url = re.sub(r'^\s+|\s+$', '', url)
+    url = remove_blanks(url)
 
     return url
 
 def preprocess_url(url, remove_protocol_and_authority=False, remove_positional_data=False, separator=' ',
                    stringify_instead_of_tokenization=False, remove_protocol=True, lower=False,
-                   tokenization=True, start_urls_idx=None, end_urls_idx=None):
+                   tokenization=True, start_urls_idx=None, end_urls_idx=None, erase_blanks=True):
     if isinstance(url, str):
         url = [url]
 
@@ -73,10 +78,11 @@ def preprocess_url(url, remove_protocol_and_authority=False, remove_positional_d
         elif tokenization:
             u = u.replace('/', separator)
             # Remove blanks
-            u = re.sub(r'\s+', ' ', u)
-            u = re.sub(r'^\s+|\s+$', '', u)
+            u = remove_blanks(u)
             # Tokenize
             u = ' '.join(tokenize(u))
+        elif erase_blanks:
+            u = remove_blanks(u)
 
         urls.append(u)
 
