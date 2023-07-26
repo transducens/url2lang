@@ -27,6 +27,8 @@ _langs_to_detect = [_unknown_lang_label] + _langs_to_detect_alpha_3
 _check_2_letter_too = True
 _check_lang_name_too = False
 
+logger = logging.getLogger("url2lang.baseline")
+
 _warning_once_done = False
 def get_gs(file):
     def unk_lang(lang):
@@ -38,7 +40,7 @@ def get_gs(file):
             if not _warning_once_done:
                 _warning_once_done = True
 
-                logging.warning("GS: URLs whose lang is %s are going to be ignored", lang)
+                logger.warning("GS: URLs whose lang is %s are going to be ignored", lang)
 
             return True
 
@@ -50,7 +52,7 @@ def get_gs(file):
         line = line.rstrip("\r\n").split('\t')
 
         if len(line) != 2:
-            logging.warning("GS: unexpected number of fields in TSV entry #%d: %d were expected but got %d", idx, 2, len(line))
+            logger.warning("GS: unexpected number of fields in TSV entry #%d: %d were expected but got %d", idx, 2, len(line))
 
             continue
 
@@ -60,7 +62,7 @@ def get_gs(file):
             continue
 
         if len(lang) != 3:
-            logging.warning("GS: URL lang (lang: %s) was expected to be ISO 639-2: entry #%d", lang, idx)
+            logger.warning("GS: URL lang (lang: %s) was expected to be ISO 639-2: entry #%d", lang, idx)
 
             continue
 
@@ -68,17 +70,17 @@ def get_gs(file):
             continue
 
         if lang not in _langs_to_detect:
-            logging.warning("GS: URL language (lang: %s) not in the list of languages to be detected: entry #%d", lang, idx)
+            logger.warning("GS: URL language (lang: %s) not in the list of languages to be detected: entry #%d", lang, idx)
 
             continue
 
         gs.add('\t'.join(line))
 
         if url in url2lang:
-            logging.warning("GS: duplicated URL in TSV entry #%d: %s", idx, url)
+            logger.warning("GS: duplicated URL in TSV entry #%d: %s", idx, url)
 
             if url2lang[url] != lang:
-                logging.error("GS: duplicated URL: different lang: got %s, but %s had been registred before", lang, url2lang[url])
+                logger.error("GS: duplicated URL: different lang: got %s, but %s had been registred before", lang, url2lang[url])
 
             continue
 
@@ -86,7 +88,7 @@ def get_gs(file):
             lang2url[lang] = set()
 
         if url in lang2url[lang]:
-            logging.warning("GS: duplicated URL: already registred in lang %s", lang)
+            logger.warning("GS: duplicated URL: already registred in lang %s", lang)
 
             continue
 
@@ -105,17 +107,17 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
         _importance_hierarchy_tmp = os.environ["U2L_IMPORTANCE_HIERARCHY"].rstrip(" \r\n").split(',')
 
         if len(_importance_hierarchy_tmp) != len(_importance_hierarchy):
-            logging.warning("Unexpected envvar format: %d fields split by comma were expected: U2L_IMPORTANCE_HIERARCHY", len(_importance_hierarchy))
+            logger.warning("Unexpected envvar format: %d fields split by comma were expected: U2L_IMPORTANCE_HIERARCHY", len(_importance_hierarchy))
         else:
             try:
                 _importance_hierarchy_tmp = list(map(int, _importance_hierarchy_tmp))
                 _importance_hierarchy = _importance_hierarchy_tmp
 
-                logging.debug("_importance_hierarchy has been modified")
+                logger.debug("_importance_hierarchy has been modified")
             except:
-                logging.warning("Unexpected envvar format: int values were expected: U2L_IMPORTANCE_HIERARCHY")
+                logger.warning("Unexpected envvar format: int values were expected: U2L_IMPORTANCE_HIERARCHY")
 
-    logging.debug("_importance_hierarchy: %s", ", ".join(map(str, _importance_hierarchy)))
+    logger.debug("_importance_hierarchy: %s", ", ".join(map(str, _importance_hierarchy)))
 
     y_pred, y_true = [], []
     matches = 0
@@ -179,7 +181,7 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
                 detected_lang = langs[0] # Greedy policy: get first detected language with highest importance
 
             if len(langs) != 0:
-                logging.debug("Detected languages with importance %d: %s (url: %s)", importance, langs, url)
+                logger.debug("Detected languages with importance %d: %s (url: %s)", importance, langs, url)
 
         if detected_lang != _unknown_lang_label:
             matches += 1
@@ -193,10 +195,10 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
                     y_true.append(gs_url2lang[url])
                     y_pred.append(detected_lang)
                 else:
-                    logging.error("Evaluated URL language (lang: %s) not in the langs to be processed: this will falsify the evaluation: %s", gs_url2lang[url], url)
-                    logging.error("This shouldn't be happening: bug?")
+                    logger.error("Evaluated URL language (lang: %s) not in the langs to be processed: this will falsify the evaluation: %s", gs_url2lang[url], url)
+                    logger.error("This shouldn't be happening: bug?")
             else:
-                logging.error("Evaluated URL not present in the GS: this will falsify the evaluation: %s", url)
+                logger.error("Evaluated URL not present in the GS: this will falsify the evaluation: %s", url)
 
         # Print results?
         if print_pairs and (print_negative_matches or detected_lang != _unknown_lang_label):
@@ -230,7 +232,7 @@ def main(args):
         line = line.rstrip("\r\n").split('\t')
 
         if len(line) != 1:
-            logging.warning("Unexpected number of fields in TSV entry #%d: %d were expected but got %d", idx, 1, len(line))
+            logger.warning("Unexpected number of fields in TSV entry #%d: %d were expected but got %d", idx, 1, len(line))
 
             continue
 
@@ -238,10 +240,10 @@ def main(args):
 
         urls.append(url)
 
-    logging.info("Provided URLs: %d", len(urls))
+    logger.info("Provided URLs: %d", len(urls))
 
     # Evaluate
-    logging.info("Evaluating...")
+    logger.info("Evaluating...")
 
     y_pred, y_true, matches =\
         evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=lowercase,
@@ -250,19 +252,19 @@ def main(args):
     # Some statistics
     negative_matches = len(urls) - matches
 
-    logging.info("Positive matches (i.e. language detected): %d", matches)
-    logging.info("Negative matches (i.e. language not detected): %d", negative_matches)
+    logger.info("Positive matches (i.e. language detected): %d", matches)
+    logger.info("Negative matches (i.e. language not detected): %d", negative_matches)
 
     if gs_file:
         seen_langs = set.union(set(y_true), set(y_pred))
         seen_langs = sorted(list(seen_langs))
 
-        logging.info("Using GS in order to get some evaluation metrics. Languages to process: %s", str(seen_langs))
+        logger.info("Using GS in order to get some evaluation metrics. Languages to process: %s", str(seen_langs))
 
         # Log metrics
         confusion_matrix = sklearn.metrics.confusion_matrix(y_true, y_pred, labels=_langs_to_detect)
 
-        #logging.info("GS: confusion matrix: %s", list(confusion_matrix))
+        #logger.info("GS: confusion matrix: %s", list(confusion_matrix))
 
         precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, average=None)
         recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, average=None)
@@ -274,19 +276,19 @@ def main(args):
 
             incorrect = sum(list(confusion_matrix[idx])) - confusion_matrix[idx][idx]
 
-            logging.info("GS: lang %s: confusion matrix row: %s (ok: %d; nok: %d)", lang, list(confusion_matrix[idx]), confusion_matrix[idx][idx], incorrect)
-            logging.info("GS: lang %s: precision: %s", lang, precision[idx])
-            logging.info("GS: lang %s: recall: %s", lang, recall[idx])
-            logging.info("GS: lang %s: F1: %s", lang, f1[idx])
+            logger.info("GS: lang %s: confusion matrix row: %s (ok: %d; nok: %d)", lang, list(confusion_matrix[idx]), confusion_matrix[idx][idx], incorrect)
+            logger.info("GS: lang %s: precision: %s", lang, precision[idx])
+            logger.info("GS: lang %s: recall: %s", lang, recall[idx])
+            logger.info("GS: lang %s: F1: %s", lang, f1[idx])
 
         for average in ("micro", "macro"):
             precision = sklearn.metrics.precision_score(y_true, y_pred, labels=_langs_to_detect, average=average)
             recall = sklearn.metrics.recall_score(y_true, y_pred, labels=_langs_to_detect, average=average)
             f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=_langs_to_detect, average=average)
 
-            logging.info("GS: %s precision: %s", average, precision)
-            logging.info("GS: %s recall: %s", average, recall)
-            logging.info("GS: %s F1: %s", average, f1)
+            logger.info("GS: %s precision: %s", average, precision)
+            logger.info("GS: %s recall: %s", average, recall)
+            logger.info("GS: %s F1: %s", average, f1)
 
 def initialization():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -313,8 +315,8 @@ if __name__ == "__main__":
 
     args = initialization()
 
-    utils.set_up_logging(level=logging.DEBUG if args.verbose else logging.INFO)
+    logger = utils.set_up_logging_logger(logger, level=logging.DEBUG if args.verbose else logging.INFO)
 
-    logging.debug("Arguments processed: {}".format(str(args)))
+    logger.debug("Arguments processed: {}".format(str(args)))
 
     main(args)
