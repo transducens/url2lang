@@ -101,14 +101,14 @@ _importance_hierarchy = [1, 3, 2, 4]    # variables, subdomain, directory and pu
                                         # Research purposes: which order is the best? Set using U2L_IMPORTANCE_HIERARCHY envvar
 def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=True,
              print_negative_matches=False, print_score=False):
-    global _importance_hierarchy
-
     if "U2L_IMPORTANCE_HIERARCHY" in os.environ:
         _importance_hierarchy_tmp = os.environ["U2L_IMPORTANCE_HIERARCHY"].rstrip(" \r\n").split(',')
 
         if len(_importance_hierarchy_tmp) != len(_importance_hierarchy):
             logger.warning("Unexpected envvar format: %d fields split by comma were expected: U2L_IMPORTANCE_HIERARCHY", len(_importance_hierarchy))
         else:
+            global _importance_hierarchy
+
             try:
                 _importance_hierarchy_tmp = list(map(int, _importance_hierarchy_tmp))
                 _importance_hierarchy = _importance_hierarchy_tmp
@@ -159,10 +159,10 @@ def evaluate(urls, gs, gs_url2lang, gs_lang2url, lowercase=False, print_pairs=Tr
             _url_variables = urlparse.parse_qs(_url_parsed.query)
 
             for _check in all_langs2check:
-                #if f"lang={_check}" in _url or f"language={_check}" in _url:
-                for k, v in _url_variables.items():
-                    if v == _check:
-                        importance2lang[_importance_hierarchy[0]].append(lang2check)
+                for params in _url_variables.values():
+                    for p in params:
+                        if p == _check:
+                            importance2lang[_importance_hierarchy[0]].append(lang2check)
 
                 if subdomain and subdomain == _check:
                     importance2lang[_importance_hierarchy[1]].append(lang2check)
