@@ -145,7 +145,7 @@ def tokenize_batch_from_iterator(iterator, tokenizer, batch_size, f=None, return
 
             continue
 
-        initial_urls.append([initial_url] + [result_lang] if specific_lang else [])
+        initial_urls.append([initial_url] + ([result_lang] if specific_lang else []))
         urls["urls"].append(f"{src_url}")
         urls["labels_task_language_identification"].append(target_output)
 
