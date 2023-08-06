@@ -429,6 +429,7 @@ def main(args):
     task_dev_metric = args.task_dev_metric
     dataset_workers = args.dataset_workers
     pre_load_shards = args.pre_load_shards
+    input_lang_is_expected = args.input_lang_is_expected
 
     if auxiliary_tasks:
         _auxiliary_tasks_weights = {}
@@ -567,7 +568,8 @@ def main(args):
                               inference_from_stdin=inference_from_stdin, remove_authority=remove_authority,
                               parallel_likelihood=parallel_likelihood, threshold=threshold, url_separator=url_separator,
                               remove_positional_data_from_resource=remove_positional_data_from_resource, lower=lower,
-                              auxiliary_tasks=auxiliary_tasks, auxiliary_tasks_flags=auxiliary_tasks_flags)
+                              auxiliary_tasks=auxiliary_tasks, auxiliary_tasks_flags=auxiliary_tasks_flags,
+                              specific_lang=input_lang_is_expected)
 
         logger.info("Done!")
 
@@ -1417,6 +1419,9 @@ def initialization():
     parser.add_argument('--pre-load-shards', action="store_true",
                         help="Load all shards at beginning one by one in order to get some statistics needed for some features. This "
                              "option is optional, but if not set, some features might not work as expected (e.g. linear LR scheduler)")
+    parser.add_argument('--input-lang-is-expected', action="store_true",
+                        help="Language will be expected to be present in the input in inference mode (useful when you want to get the "
+                             "likehood of the specified language instead of the identified language: --parallel-likelihood)")
 
     parser.add_argument('--seed', type=int, default=71213,
                         help="Seed in order to have deterministic results (not fully guaranteed). "
