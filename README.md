@@ -6,6 +6,12 @@ The code provided in this repo allows to train new models. If you want to use th
 
 Note that most of this code has been ported from https://github.com/transducens/parallel-urls-classifier and some options may not be supported.
 
+The supported languages are the same as in [CLD2-full](https://github.com/CLD2Owners/cld2). In particular, we process the languages using the same list of languages used by [CommonCrawl](https://commoncrawl.org/) (see https://commoncrawl.github.io/cc-crawl-statistics/plots/languages). The complete list of supported languages (ISO 639-2 codes):
+
+>aar abk afr aka amh ara asm aym aze bak bel ben bih bis bod bos bre bul cat ceb ces chr cos crs cym dan deu div dzo ell eng epo est eus fao fas fij fin fra fry gla gle glg glv got grn guj hat hau haw heb hin hmn hrv hun hye ibo iku ile ina ind ipk isl ita jav jpn kal kan kas kat kaz kha khm kin kir kor kur lao lat lav lif lin lit ltz lug mal mar mfe mkd mlg mlt mon mri msa mya nau nep nld nno nor nso nya oci ori orm pan pol por pus que roh ron run rus sag san sco sin slk slv smo sna snd som sot spa sqi srp ssw sun sux swa swe syr tam tat tel tgk tgl tha tir ton tsn tso tuk tur uig ukr urd uzb ven vie vol war wol xho yid yor zha zho zul
+
+In addition to the previous list, the `unk` identifier is supported to mark URLs that link to documents whose language is not supported or cannot be inferred (e.g., `.png` file). The list can be easily extended. This configuration was chosen to be able to process the CommonCrawl releases.
+
 ## Installation
 
 To install `url2lang` first clone the code from the repository:
