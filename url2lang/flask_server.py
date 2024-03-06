@@ -1,8 +1,9 @@
 
-import logging
-import argparse
 import json
 import base64
+import pickle
+import logging
+import argparse
 
 import url2lang.utils.utils as utils
 import url2lang.url2lang as u2l
@@ -113,6 +114,10 @@ def inference():
 
     disable_streamer = global_conf["disable_streamer"]
     get_results = global_conf["streamer"].predict if not disable_streamer else batch_prediction
+    get_embeddings = global_conf["get_embeddings"]
+
+    if get_embeddings:
+        assert langs is None, langs
 
     if langs:
         urls = [f"{url}\t{lang}" for url, lang in zip(urls, langs)]
@@ -121,23 +126,34 @@ def inference():
 
     # Return results
     if len(results) != len(urls):
-        logger.warning("Results length mismatch with the provided URLs (task '%s'): %d vs %d: %s vs %s",
-                        task, len(results), len(urls), results, urls)
+        logger.warning("Results length mismatch with the provided URLs: %d vs %d: %s vs %s",
+                       len(results), len(urls), results, urls)
 
         return jsonify({
             "ok": "null",
-            "err": f"results length mismatch with the provided URLs (task '{task}'): {len(results)} vs {len(urls)}",
+            "err": f"results length mismatch with the provided URLs: {len(results)} vs {len(urls)}",
         })
 
-    results = [str(r) for r in results]
+    if get_embeddings:
+        results = torch.stack(results, dim=0)
 
-    for idx, (url, result) in enumerate(zip(urls, results), 1):
-        lang = '-'
+        assert results.shape == (len(urls), 768), f"{results.shape} | {len(urls)}"
 
-        if langs:
-            url, lang = url.split('\t')
+        results = pickle.dumps(results)
+        results = base64.b64encode(results).decode() # base64 tensor
 
-        logger.debug("Results #%d: %s (lang: %s): %s", idx, url, lang, result)
+        for idx, url in enumerate(urls, 1):
+            logger.debug("Results #%d: %s", idx, url)
+    else:
+        results = [str(r) for r in results]
+
+        for idx, (url, result) in enumerate(zip(urls, results), 1):
+            lang = '-'
+
+            if langs:
+                url, lang = url.split('\t')
+
+            logger.debug("Results #%d: %s (lang: %s): %s", idx, url, lang, result)
 
     return jsonify({
         "ok": results,
@@ -161,6 +177,7 @@ def batch_prediction(urls):
     auxiliary_tasks = global_conf["auxiliary_tasks"]
     target_task = global_conf["target_task"]
     target_lang = global_conf["target_lang"]
+    get_embeddings = global_conf["get_embeddings"]
     target_urls = []
     target_langs = []
 
@@ -197,8 +214,11 @@ def batch_prediction(urls):
         model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager, target_urls,
         remove_authority=remove_authority, remove_positional_data_from_resource=remove_positional_data_from_resource,
         parallel_likelihood=parallel_likelihood, url_separator=url_separator, lower=lower,
-        auxiliary_tasks=auxiliary_tasks, target_langs=target_langs,
+        auxiliary_tasks=auxiliary_tasks, target_langs=target_langs, get_embeddings=get_embeddings,
     )
+
+    if get_embeddings:
+        assert results[target_task].shape == (len(target_urls), 768), f"{results[target_task].shape} {len(target_urls)}"
 
     return results[target_task] # TODO do we need a list if the streamer is used (it seems so)?
                                 # https://github.com/ShannonAI/service-streamer/issues/97
@@ -219,6 +239,7 @@ def main(args):
     disable_streamer = args.disable_streamer
     target_lang = args.target_lang
     parallel_likelihood = args.parallel_likelihood
+    get_embeddings = args.get_embeddings
 
     if target_lang is None:
         target_lang = []
@@ -261,10 +282,11 @@ def main(args):
     global_conf["auxiliary_tasks"] = auxiliary_tasks
     global_conf["target_task"] = target_task
     global_conf["target_lang"] = target_lang
+    global_conf["get_embeddings"] = get_embeddings
 
     # Some guidance
     logger.info("Example: curl http://127.0.0.1:%d/hello-world", flask_port)
-    logger.debug("Example: curl http://127.0.0.1:%d/inference -X POST -d \"urls=https://domain/resource1\"&langs=eng", flask_port)
+    logger.debug("Example: curl http://127.0.0.1:%d/inference -X POST -d \"urls=https://domain/resource1&langs=eng\"", flask_port)
 
     if run_flask_server:
         # Run flask server
@@ -299,6 +321,7 @@ def initialization():
                         help="Streamer max latency. You will need to modify this parameter if you want to increase the GPU usage")
     parser.add_argument('--target-lang', type=str, help="Target lang")
     parser.add_argument('--do-not-run-flask-server', action="store_true", help="Do not run app.run")
+    parser.add_argument('--get-embeddings', action="store_true", help="Return embeddings instead of language")
 
     parser.add_argument('-v', '--verbose', action="store_true", help="Verbose logging mode")
     parser.add_argument('--flask-debug', action="store_true", help="Flask debug mode. Warning: this option might load the model multiple times")

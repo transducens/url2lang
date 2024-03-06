@@ -65,6 +65,7 @@ def inference_with_heads(model, tasks, tokenizer, inputs_and_outputs, amp_contex
             model_outputs = model(head_task, urls, attention_mask, encoder_output=encoder_output)
             outputs = model_outputs["logits"] # Get head result
             encoder_output = model_outputs["encoder_output"]
+            cls_token = encoder_output[:, 0, :].cpu().detach()
             criterion = criteria[head_task] if criteria else None
             loss_weight = tasks_weights[head_task] if tasks_weights else 1.0
 
@@ -93,6 +94,7 @@ def inference_with_heads(model, tasks, tokenizer, inputs_and_outputs, amp_contex
                     "outputs_classification": outputs_classification,
                     "loss_detach": loss.cpu().detach() if criterion else None,
                     "regression": regression,
+                    "cls_token": cls_token,
                 }
             elif head_task == "mlm":
                 if criterion:
@@ -337,6 +339,10 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
                         lang = url2lang._id2lang[argmax]
 
                         print(f"{task}\t{lang}\t{initial_src_url}")
+#                        details = {l: outputs[0][k] for l, k in url2lang._lang2id.items()}
+#                        details = dict(sorted(details.items(), key=lambda item: item[1], reverse=True))
+#                        print(list(details.items())[:10])
+#                        print(f"details: {task}\t{lang} {argmax}\t{initial_src_url}")
                     else:
                         print(f"{task}\t{argmax}\t{initial_src_url}")
 
@@ -344,7 +350,7 @@ def interactive_inference(model, tokenizer, batch_size, max_length_tokens, devic
 def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, device, amp_context_manager,
                               src_urls, remove_authority=False, remove_positional_data_from_resource=False,
                               parallel_likelihood=False, threshold=-np.inf, url_separator=' ', lower=False,
-                              auxiliary_tasks=[], auxiliary_tasks_flags=[], target_langs=[]):
+                              auxiliary_tasks=[], auxiliary_tasks_flags=[], target_langs=[], get_embeddings=False):
     model.eval()
     all_results = {}
 
@@ -376,8 +382,17 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
                                                                   separator=url_separator, lower=lower),
                             auxiliary_tasks=auxiliary_tasks, inference=True)
 
+    if get_embeddings:
+        # We only support this option with the "language-identification" task
+        assert len(all_tasks) == 1
+        assert all_tasks[0] == "language-identification"
+
+    total_urls = 0
+
     for target_urls in urls_generator:
         target_urls = target_urls["urls"]
+
+        total_urls += len(target_urls)
 
         # Tokens
         tokens = utils.encode(tokenizer, target_urls, max_length=max_length_tokens, padding="longest", return_attention_mask=True)
@@ -401,12 +416,26 @@ def non_interactive_inference(model, tokenizer, batch_size, max_length_tokens, d
             if specific_lang:
                 outputs_argmax = np.array([url2lang._lang2id[lang] for lang in target_langs])
 
-            if parallel_likelihood:
-                _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax, outputs)]
-                _results = [likelihood if specific_lang else f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
-            else:
-                _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax]
+            if get_embeddings:
+                cls_token = results[task]["cls_token"]
 
-            all_results[task].extend(_results)
+                assert cls_token.shape == (len(target_urls), 768), cls_token.shape # TODO fix hard-coded value?
+
+                all_results[task].append(cls_token)
+            else:
+                if parallel_likelihood:
+                    _results = [data if regression else data[argmax] for argmax, data in zip(outputs_argmax, outputs)]
+                    _results = [likelihood if specific_lang else f"{url2lang._id2lang[argmax]}: {likelihood}" for argmax, likelihood in zip(outputs_argmax, _results) if likelihood >= threshold]
+                else:
+                    _results = [url2lang._id2lang[argmax] for argmax in outputs_argmax]
+
+                all_results[task].extend(_results)
+
+    if get_embeddings:
+        assert len(all_tasks) == 1
+
+        all_results[all_tasks[0]] = torch.cat(all_results[all_tasks[0]], dim=0)
+
+        assert all_results[all_tasks[0]].shape == (total_urls, 768), all_results[all_tasks[0]].shape # TODO fix hard-coded value?
 
     return all_results
