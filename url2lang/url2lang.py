@@ -37,7 +37,6 @@ from torch.utils.data import (
     WeightedRandomSampler,
     SequentialSampler,
 )
-import transformers
 from transformers import (
     AutoTokenizer,
     get_linear_schedule_with_warmup,

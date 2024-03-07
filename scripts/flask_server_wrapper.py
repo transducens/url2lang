@@ -1,5 +1,5 @@
 
-def init(model_input, batch_size=16, streamer_max_latency=0.1, target_task="language-identification"):
+def init(model_input, batch_size=16, streamer_max_latency=0.1, target_task="language-identification", get_embeddings=False):
     import os
     import sys
     import url2lang.flask_server as flask_server
@@ -21,16 +21,22 @@ def init(model_input, batch_size=16, streamer_max_latency=0.1, target_task="lang
     # Inject args that will be used by the Flask server
     sys.argv.extend([
         "--batch-size", str(batch_size),
-        #"--parallel-likelihood",
+        "--parallel-likelihood",
         "--target-task", target_task,
         #"--regression",
         "--streamer-max-latency", str(streamer_max_latency),
         "--do-not-run-flask-server", # Necessary for gunicorn in order to work properly
         "--expect-urls-base64",
-        #"--verbose",
+        "--verbose",
         #"--disable-streamer", # It should be enabled for crawls of multiple websites, but disabled for a few websites
-        model_input
+        #"--target-lang", "isl",
+        #model_input
     ])
+
+    if get_embeddings:
+        sys.argv.append("--get-embeddings")
+
+    sys.argv.append(model_input)
 
     flask_server.cli()
 

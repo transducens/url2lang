@@ -190,6 +190,17 @@ def main(args):
     recall = sklearn.metrics.recall_score(y_true, y_pred, labels=labels, average=None)
     f1 = sklearn.metrics.f1_score(y_true, y_pred, labels=labels, average=None)
 
+#    sys.stdout.write(f"detailed conf matrix:")
+#    for idx1, lang1 in enumerate(labels_conf_mat):
+#        sys.stdout.write(f"\t{lang1}")
+#    sys.stdout.write("\n")
+#    for idx1, lang1 in enumerate(labels_conf_mat):
+#        sys.stdout.write(f"details:{lang1}")
+#        for idx2, lang2 in enumerate(labels_conf_mat):
+#            details = confusion_matrix[labels_conf_mat.index(lang1)][labels_conf_mat.index(lang2)]
+#            sys.stdout.write(f"\t{details}")
+#        sys.stdout.write("\n")
+
     for idx, lang in enumerate(labels):
         if lang not in _langs_to_detect:
             logging.warning("Couldn't process lang %s: is not in the list of available langs", lang)
