@@ -218,7 +218,9 @@ def batch_prediction(urls):
     )
 
     if get_embeddings:
-        assert results[target_task].shape == (len(target_urls), 768), f"{results[target_task].shape} {len(target_urls)}"
+        assert results[target_task].shape == (len(target_urls), 768), f"{results[target_task].shape} ({len(target_urls)}, 768)" # TODO fix hard-coded value?
+    else:
+        assert len(results[target_task]) == len(target_urls), f"{len(results[target_task])} != {len(target_urls)}"
 
     return results[target_task] # TODO do we need a list if the streamer is used (it seems so)?
                                 # https://github.com/ShannonAI/service-streamer/issues/97
