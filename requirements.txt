@@ -9,6 +9,5 @@ psutil==5.9.0
 matplotlib==3.5.1
 imbalanced-learn==0.9.1
 more-itertools==9.0.0
-service_streamer==0.1.2
 Flask==2.2.2
 gunicorn==20.1.0
