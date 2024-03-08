@@ -1,0 +1,3 @@
+[submodule "service-streamer"]
+	path = service-streamer
+	url = https://github.com/ShannonAI/service-streamer
