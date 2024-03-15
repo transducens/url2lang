@@ -296,6 +296,6 @@ curl http://127.0.0.1:5000/inference -X POST \
 
 ## Acknowledgements
 
-This work has been co-funded by the Conselleria de Innovación, Universidades, Ciencia y Sociedad Digital (Generalitat Valenciana) and the European Social Fund as part of the thesis research project granted to Cristian García Romero (CIACIF/2021/365). The work has also been funded by the Spanish Ministry of Science and Innovation (MCIN), the Spanish Research Agency (AEI/10.13039/501100011033) and the European Regional Development Fund A way to make Europe as part of the research project [Lightweight neural translation technologies for low-resource languages (LiLowLa)](https://transducens.dlsi.ua.es/lilowla/) (PID2021-127999NB-I00).
+Work co-funded by the Conselleria de Innovación, Universidades, Ciencia y Sociedad Digital (Generalitat Valenciana) and the European Social Fund through grant CIACIF/2021/365, and by the Spanish Ministry of Science and Innovation (MCIN), the Spanish Research Agency (AEI/10.13039/501100011033) and the European Regional Development Fund A way to make Europe through project grant PID2021-127999NB-I00.
 
 ![European Social Fund](img/logo-FSE.jpg)
