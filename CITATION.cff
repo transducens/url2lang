@@ -1,0 +1,41 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: url2lang
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Cristian
+    family-names: García-Romero
+    email: cgarcia@dlsi.ua.es
+    affiliation: >-
+      Universitat d'Alacant, Transducens research group,
+      Spain
+    orcid: 'https://orcid.org/0000-0002-0483-4358'
+  - given-names: Miquel
+    family-names: Esplà-Gomis
+    email: mespla@dlsi.ua.es
+    affiliation: >-
+      Universitat d'Alacant, Transducens research group,
+      Spain
+    orcid: 'https://orcid.org/0000-0002-2682-066X'
+  - given-names: Felipe
+    family-names: Sánchez-Martínez
+    email: fsanchez@dlsi.ua.es
+    affiliation: >-
+      Universitat d'Alacant, Transducens research group,
+      Spain
+    orcid: 'https://orcid.org/0000-0002-2295-2630'
+repository-code: 'https://github.com/transducens/url2lang'
+repository: >-
+  https://huggingface.co/Transducens/xlm-roberta-base-url2lang
+abstract: url2lang infers the language of a document from its URL.
+keywords:
+  - url
+  - crawling
+  - language identification
+license: Apache-2.0
+commit: 3288b6b05348399a8c10f563e6bb27c2221ba188
