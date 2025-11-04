@@ -298,4 +298,7 @@ curl http://127.0.0.1:5000/inference -X POST \
 
 Work co-funded by the Conselleria de Innovación, Universidades, Ciencia y Sociedad Digital (Generalitat Valenciana) and the European Social Fund through grant CIACIF/2021/365, and by the Spanish Ministry of Science and Innovation (MCIN), the Spanish Research Agency (AEI/10.13039/501100011033) and the European Regional Development Fund A way to make Europe through project grant PID2021-127999NB-I00.
 
-![European Social Fund](img/logo-FSE.jpg)
+<p align="center">
+  <img src="img/genval.png" height="100px">
+  <img src="img/MICIU+Cofinanciado+AEI.jpg" height="100px">
+</p>
